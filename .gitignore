@@ -1,0 +1,16 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Python / Anaconda caches
+.env
+.venv/
+
+# Data files (keep raw data uncommitted if large)
+*.csv
+*.xlsx
+*.parquet
+*.txt
+*.xls:Zone.Identifier
+*.txt:Zone.Identifier
