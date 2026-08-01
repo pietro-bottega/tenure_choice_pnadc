@@ -1,2 +1,2 @@
-# tenure_choice_pnadc
-Trabalho de Conclusão de Curso: Comprar ou alugar? Os determinantes da tenure choice no Brasil
+# Comprar ou alugar? Os determinantes da tenure choice no Brasil
+Trabalho de Conclusão de Curso, Ciências Econômicas
