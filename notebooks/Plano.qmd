@@ -8,43 +8,43 @@ format: html
 ```{r}
 library(PNADcIBGE)
 library(survey)
+source("../functions/data_treatment.R")
 ```
 
-## Extrair dados
+## Extrair dados e aplicar filtros
 
-Usar pacote oficial PNADcIBGE para extrair dados da edição 2025, visita 1.
-
-```{r}
-variables <- c('UPA', 'V1008', 'V1014', 'V2003', 'V1022', 'V2005')
-
-pnadc_unfiltered <- get_pnadc(
-  year = 2025,
-  interview = 1,
-  vars = variables,
-  labels = FALSE
-)
-```
-
-```{r}
-nrow(pnadc_unfiltered$variables)
-```
-
-```{r}
-svytotal (~1, pnadc_unfiltered)
-```
-
-## Filtros de escopo
+1.  Usar pacote oficial PNADcIBGE para extrair dados da edição 2025, visita 1.
+2.  Aplicar filtro para áreas urbanas:
 
 *“Three types of urban sectors as classified by IBGE (urbanized urban areas, non-urbanized urban areas and isolated urban areas) plus the areas classified as rural of urban extension, that correspond roughly to the urban fringe and are highly interconnected and share several attributes with urbanized areas.”* (pg. 17)
 
-Além disso, a pesquisa se concentra nos chefes da família, já que variáveis como gênero do chefe da família são utilizadas.
+3.  Aplicar filtro para entrevistas relacionadas ao chefe da família, já que variáveis como gênero do chefe da família são utilizadas.
 
-**Fonte:**
+**Variáveis:**
 
 - V1022: Situação do domicílio == 1 (Urbana)
 
 - V2005: Condição no domicílio == 01 (Pessoa responsável pelo domicílio)
 
 ```{r}
-pnad <- subset(pnad_design, V1022 == 1 & V2005 == "01")
+
+variables <- c('UPA', 'V1008', 'V1014', #identifiers
+               'V1022', 'V2005', #filters
+                 'S01001', 'S01017', 'S01020', 'S01020A') #tenure
+
+pnadc <- get_filtered_pnadc(
+  target_year = 2025,
+  target_interview = 1,
+  target_vars = variables
+)
 ```
+
+População total estimada a partir da amostra:
+
+```{r}
+table_conditions <- svytable(~S01001, pnadc)
+pop_total <- sum(table_conditions)
+print(format(pop_total, big.mark = ",", scientific = FALSE))
+```
+
+## Distribuição da condição de ocupação da moradia
