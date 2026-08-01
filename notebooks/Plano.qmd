@@ -6,7 +6,31 @@ format: html
 # Análise
 
 ```{r}
+library(PNADcIBGE)
+library(survey)
+```
 
+## Extrair dados
+
+Usar pacote oficial PNADcIBGE para extrair dados da edição 2025, visita 1.
+
+```{r}
+variables <- c('UPA', 'V1008', 'V1014', 'V2003', 'V1022', 'V2005')
+
+pnadc_unfiltered <- get_pnadc(
+  year = 2025,
+  interview = 1,
+  vars = variables,
+  labels = FALSE
+)
+```
+
+```{r}
+nrow(pnadc_unfiltered$variables)
+```
+
+```{r}
+svytotal (~1, pnadc_unfiltered)
 ```
 
 ## Filtros de escopo
@@ -20,3 +44,7 @@ Além disso, a pesquisa se concentra nos chefes da família, já que variáveis 
 - V1022: Situação do domicílio == 1 (Urbana)
 
 - V2005: Condição no domicílio == 01 (Pessoa responsável pelo domicílio)
+
+```{r}
+pnad <- subset(pnad_design, V1022 == 1 & V2005 == "01")
+```
