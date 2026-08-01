@@ -39,7 +39,7 @@ pnadc <- get_filtered_pnadc(
 )
 ```
 
-População total estimada a partir da amostra:
+População total estimada a partir do recorte da amostra:
 
 ```{r}
 table_conditions <- svytable(~S01001, pnadc)
