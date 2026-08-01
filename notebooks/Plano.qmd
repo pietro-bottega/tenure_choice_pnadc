@@ -4,3 +4,19 @@ format: html
 ---
 
 # Análise
+
+```{r}
+
+```
+
+## Filtros de escopo
+
+*“Three types of urban sectors as classified by IBGE (urbanized urban areas, non-urbanized urban areas and isolated urban areas) plus the areas classified as rural of urban extension, that correspond roughly to the urban fringe and are highly interconnected and share several attributes with urbanized areas.”* (pg. 17)
+
+Além disso, a pesquisa se concentra nos chefes da família, já que variáveis como gênero do chefe da família são utilizadas.
+
+**Fonte:**
+
+- V1022: Situação do domicílio == 1 (Urbana)
+
+- V2005: Condição no domicílio == 01 (Pessoa responsável pelo domicílio)
