@@ -2,15 +2,14 @@
 .Rhistory
 .RData
 .Ruserdata
+.Rprofile
 
-# Python / Anaconda caches
-.env
-.venv/
+# Ignores entire folders where you keep your datasets
+data/
+outputs/
 
-# Data files (keep raw data uncommitted if large)
+# Ignores common data file extensions anywhere in the project
 *.csv
 *.xlsx
-*.parquet
+*.rds
 *.txt
-*.xls:Zone.Identifier
-*.txt:Zone.Identifier
