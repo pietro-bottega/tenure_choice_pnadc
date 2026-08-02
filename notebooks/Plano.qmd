@@ -8,17 +8,19 @@ format: html
 ```{r}
 library(PNADcIBGE)
 library(survey)
+library(survey)
+library(dplyr)
+library(stringr)
+library(gt)
 source("../functions/data_treatment.R")
 ```
 
 ## Extrair dados e aplicar filtros
 
 1.  Usar pacote oficial PNADcIBGE para extrair dados da edição 2025, visita 1.
-2.  Aplicar filtro para áreas urbanas:
+2.  Aplicar filtro para áreas urbanas e para chefe da família:
 
-*“Three types of urban sectors as classified by IBGE (urbanized urban areas, non-urbanized urban areas and isolated urban areas) plus the areas classified as rural of urban extension, that correspond roughly to the urban fringe and are highly interconnected and share several attributes with urbanized areas.”* (pg. 17)
-
-3.  Aplicar filtro para entrevistas relacionadas ao chefe da família, já que variáveis como gênero do chefe da família são utilizadas.
+*“Assim como em Morais e Cruz (2017), enquanto recorte da amostra serão incluídas no escopo apenas os domicílios de áreas urbanas. Além disso, já que a literatura tradicionalmente observa variáveis ligadas especificamente ao chefe da família, como idade ou gênero (Li, 1977), outro recorte aplicado aos microdados é restringir apenas aos dados em que o entrevistado se declarou na condição de pessoa responsável pelo domicílio.”*
 
 **Variáveis:**
 
@@ -48,3 +50,30 @@ print(format(pop_total, big.mark = ",", scientific = FALSE))
 ```
 
 ## Distribuição da condição de ocupação da moradia
+
+1.  Criar classificação única para a condição de ocupação da moradia
+2.  Criar uma tabela com a distribuição dessas opções assim como no artigo
+
+*"Com isso, as opções de condição de ocupação da moradia foram definidas segundo os seguintes critérios: i) proprietários formais: domicílio próprio do morador, localizado em terreno próprio, com documento que comprove a propriedade; ii) inquilinos formais: domicílio do tipo casa ou apartamento alugado ou cedido; iii) proprietários informais: domicílio próprio do morador sem propriedade do terreno ou documento que comprove; e iv) inquilinos informais: domicílio do tipo casa de cômodos alugado ou cedido."*
+
+**Variáveis:**
+
+- Este domicílio é do tipo: (S01001)
+
+- Este domicílio é: (S01017)
+
+- O terreno onde está localizado esse domicílio é próprio? (S01020)
+
+- Esse domicílio tem algum documento que prove sua propriedade? (S01020A)
+
+**Notas:** O que está sendo classificado como outros aqui são os casos em que a condição de ocupação é indicada como "outra condição".
+
+```{r}
+#| echo: false
+pnadc <- classify_tenure_condition(pnadc)
+```
+
+```{r}
+table_conditions = generate_tenure_table(pnadc)
+table_conditions
+```
