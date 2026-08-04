@@ -49,7 +49,7 @@ pop_total <- sum(table_conditions)
 print(format(pop_total, big.mark = ",", scientific = FALSE))
 ```
 
-## Distribuição da condição de ocupação da moradia
+## Distribuição da condição de ocupação da moradia (y)
 
 1.  Criar classificação única para a condição de ocupação da moradia
 2.  Criar uma tabela com a distribuição dessas opções assim como no artigo
@@ -77,3 +77,57 @@ pnadc <- classify_tenure_condition(pnadc)
 table_conditions = generate_tenure_table(pnadc)
 table_conditions
 ```
+
+## Seleção de determinantes (x)
+
+1.  Delimitar variáveis para serem analisadas como determinantes
+2.  Realizar transformações necessárias
+3.  Atualizar dataset survey para incluir essas variáveis
+
+**Variáveis:**
+
+Ciclo de vida e características do domicílio:
+
+- V2009: Idade do morador na data de referência – *age of the household head in years*
+
+- V2001: Número de pessoas no domicílio – *household size*
+
+  *or*
+
+- VD2003: Número de componentes do domicílio (exclusive as pessoas cuja condição no domicílio era pensionista, empregado doméstico ou parente do empregado doméstico)
+
+- VD2004: Espécie da unidade doméstica – *efeito similar de "marital status", elaborar..*
+
+Riqueza e renda permanente:
+
+- VD5008: Rendimento domiciliar per capita (habitual de todos os trabalhos e efetivo de outras fontes) – *per capita income*
+
+- VD5007: Rendimento domiciliar (habitual de todos os trabalhos e efetivo de outras fontes) – *household income*
+
+- VD3005: Anos de estudo (pessoas de 5 anos ou mais de idade) padronizado para o Ensino fundamental com duração de 9 anos – *years of schooling of household head*
+
+- wealth proxy, em seguida..
+
+Vulnerabilidade social e restrição de crédito:
+
+- V2007: Sexo – *gender of the household head*
+
+  - Se fizer uma relação entre mesmo domicílio com mulheres com house head e que contenham crianças abaixo de 14 com situação de filho *(women with children under fourteen)*
+
+- Módulo de Migração de outra visita
+
+*migrant: recent (up to four years living in the present municipality), middle (from four years up to nine years) and long-term mi- grant (more than nine years)*
+
+*migrant: recent (up to four years living in the present municipality), middle (from four years up to nine years) and long-term mi- grant (more than nine years)*
+
+- VD4046 (Rendimentos recebidos em todas as fontes) / VD5007 (Rendimento domiciliar)
+
+  - *economic dependency (contribution of the household head to total income (head of household income/total household income)*
+
+- V4012: Nesse trabalho, ... era:(Empregado do setro privado, público; conta própria, etc) – *labor market status (employer and public servant versus informal employees, domestic servants, self-employed and un- employed)* (indicando acesso a um sistema de seguridade social.
+
+<!-- -->
+
+- V2010: Cor ou raça – adicionado
+
+Localização
