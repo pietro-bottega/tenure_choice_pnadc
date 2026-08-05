@@ -13,6 +13,7 @@ library(dplyr)
 library(stringr)
 library(gt)
 source("../functions/data_treatment.R")
+source("../functions/data_viz.R")
 ```
 
 ## Extrair dados e aplicar filtros
@@ -32,7 +33,8 @@ source("../functions/data_treatment.R")
 
 variables <- c('UPA', 'V1008', 'V1014', #identifiers
                'V1022', 'V2005', #filters
-                 'S01001', 'S01017', 'S01020', 'S01020A') #tenure
+               'S01001', 'S01017', 'S01020', 'S01020A', #tenure
+               'V2009', 'VD2003', 'VD2004') # household and lifecycle characteristics
 
 pnadc <- get_filtered_pnadc(
   target_year = 2025,
@@ -84,19 +86,60 @@ table_conditions
 2.  Realizar transformações necessárias
 3.  Atualizar dataset survey para incluir essas variáveis
 
-**Variáveis:**
+<br>
 
-Ciclo de vida e características do domicílio:
+### Ciclo de vida e características do domicílio:
 
 - V2009: Idade do morador na data de referência – *age of the household head in years*
 
-- V2001: Número de pessoas no domicílio – *household size*
+- VD2003: Número de componentes do domicílio – *household size*
 
-  *or*
+- VD2004: Espécie da unidade doméstica – *efeito similar de "marital status", elaborar.*
 
-- VD2003: Número de componentes do domicílio (exclusive as pessoas cuja condição no domicílio era pensionista, empregado doméstico ou parente do empregado doméstico)
+  <br>
 
-- VD2004: Espécie da unidade doméstica – *efeito similar de "marital status", elaborar..*
+#### V2009: Idade do morador na data de referência
+
+```{r}
+generate_summary("V2009", pnadc)
+```
+
+```{r}
+svyhist(~V2009, pnadc,
+        main = "Weighted Age Distribution",
+        xlab = "Age (V2009)",
+        ylab = "Density",
+        col = "steelblue",
+        border = "white",
+        breaks = 20)
+```
+
+#### VD2003: Número de componentes do domicílio
+
+```{r}
+generate_summary("VD2003", pnadc)
+```
+
+#### VD2004: Espécie da unidade doméstica
+
+|     |            |
+|-----|------------|
+| 1   | Unipessoal |
+| 2   | Nuclear    |
+| 3   | Estendida  |
+| 4   | Composta   |
+
+```{r}
+table_family_structure <- svytable(~VD2004, pnadc)
+table_family_structure
+```
+
+```{r}
+pnadc <- classify_structure(pnadc)
+svytable(~family_structure, pnadc)
+```
+
+<br>
 
 Riqueza e renda permanente:
 
@@ -108,7 +151,11 @@ Riqueza e renda permanente:
 
 - wealth proxy, em seguida..
 
+  <br>
+
 Vulnerabilidade social e restrição de crédito:
+
+- V2010: Cor ou raça
 
 - V2007: Sexo – *gender of the household head*
 
@@ -124,10 +171,14 @@ Vulnerabilidade social e restrição de crédito:
 
   - *economic dependency (contribution of the household head to total income (head of household income/total household income)*
 
-- V4012: Nesse trabalho, ... era:(Empregado do setro privado, público; conta própria, etc) – *labor market status (employer and public servant versus informal employees, domestic servants, self-employed and un- employed)* (indicando acesso a um sistema de seguridade social.
+- V4012: Nesse trabalho, ... era: (Empregado do setro privado, público; conta própria, etc) – *labor market status (employer and public servant versus informal employees, domestic servants, self-employed and un- employed)* (indicando acesso a um sistema de seguridade social.
 
-<!-- -->
-
-- V2010: Cor ou raça – adicionado
+  <br>
 
 Localização
+
+- UF: Unidade da Federação
+
+- V1023: Tipo de área (Capital, Resto da RM, Resto da RIDE como *large cities* e Resto da UF como *small cities*)
+
+- Macrorregião: Norte, Nordeste, Sudeste, Sul e Centro-Oeste
