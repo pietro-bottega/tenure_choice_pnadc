@@ -34,6 +34,7 @@ source("../functions/data_viz.R")
 variables <- c('UPA', 'V1008', 'V1014', #identifiers
                'V1022', 'V2005', #filters
                'S01001', 'S01017', 'S01020', 'S01020A', #tenure
+               'VD5008', 'VD5007', 'VD3005', #wealth and income
                'V2009', 'VD2003', 'VD2004') # household and lifecycle characteristics
 
 pnadc <- get_filtered_pnadc(
@@ -141,7 +142,7 @@ svytable(~family_structure, pnadc)
 
 <br>
 
-Riqueza e renda permanente:
+## Riqueza e renda permanente:
 
 - VD5008: Rendimento domiciliar per capita (habitual de todos os trabalhos e efetivo de outras fontes) – *per capita income*
 
@@ -149,9 +150,110 @@ Riqueza e renda permanente:
 
 - VD3005: Anos de estudo (pessoas de 5 anos ou mais de idade) padronizado para o Ensino fundamental com duração de 9 anos – *years of schooling of household head*
 
-- wealth proxy, em seguida..
+- *Wealth proxy*
 
-  <br>
+Deflator utilizado:
+
+```         
+CO1: Deflator, a preços médio do próprio ano, utilizado para variáveis de rendimento habitual;
+```
+
+```{r}
+pnadc <- apply_deflator(pnadc)
+```
+
+#### VD5008: Rendimento Domiciliar per capita habitual
+
+```{r}
+generate_summary("VD5008_real", pnadc)
+```
+
+#### VD5007: Rendimento Domiciliar habitual
+
+```{r}
+generate_summary("VD5007_real", pnadc)
+```
+
+#### VD3005: Anos de estudo
+
+```{r}
+pnadc <- turn_numeric(pnadc)
+generate_summary("VD3005_num", pnadc)
+```
+
+#### *Wealth proxy*
+
+Na falta de uma variável medindo riqueza, os autores fizeram um esquema de pontos que:
+
+- Soma 1 ponto para cada bem de consumo durável possuído:
+
+  - S01023: Geladeira - 1,5 pontos se for de 2 ou mais portas
+
+  - S01024: Máquina de lavar roupa
+
+  - S01025: Televisão
+
+  - S01028: Computador
+
+  - S01029: Internet
+
+  - S01031: Algum morador deste domicílio tem automóvel ou motocicleta de uso pessoal? (adicionado, na ausência de "freezer" como feito pelos autores, para manter pontuação mínima zero)
+
+- Soma a seguinte pontuação de acordo com o número de banheiros por pessoa:
+
+  S01011B: Quantos banheiros de uso exclusivo dos moradores existem neste domicílio
+
+  - Menor quartil: +1
+
+  - Segundo quartil: +0,5
+
+  - Terceiro quartil: -0,5
+
+  - Quarto quartil: -1
+
+- Reduz 1 ponto para cada condição de habitação adequada não atendida:
+
+  - S01002: material que predomina na construção das paredes externas
+
+    - 1: Alvernaria com revestimento/ taipa com revestimento
+
+  - S01003: material que predomina na cobertura (telhado) deste domicílio?
+
+    - 1: Telha sem laje de concreto
+
+    - 2: Telha com laje de concreto
+
+    - 3: Somente laje de concreto
+
+    - 4: Madeira apropriada para construção
+
+  - S01007: Principal forma de abastecimento de água utilizada neste domicílio?
+
+    - 1: Rede geral de distribuição
+
+    - 2: Poço profundo ou artesiano
+
+  - S01012A: Para onde vai o esgoto do banheiro (sanitário ou buraco de dejeção)?
+
+    - 1: Rede geral, rede pluvial
+
+    - 2: Fossa séptica ligada à rede
+
+    - 3: Fossa séptica não ligada à rede
+
+  - S01014: Qual(is) a(s) origem(ns) da energia elétrica utilizada neste domicílio?
+
+    - 1: Utiliza ao menos uma fonte de energia eletrica
+
+  - S01010: A água utilizada neste domicílio chega:
+
+    - 1: Canalizada em pelo menos um cômodo
+
+  - Espaço: número de moradores / cômodos (menos de 3 pessoas/ cômodo)
+
+    S01005: Quantos cômodos tem este domicílio?
+
+<br>
 
 Vulnerabilidade social e restrição de crédito:
 

@@ -71,3 +71,22 @@ classify_structure <- function(design_obj) {
   
   return(updated_design)
 }
+
+apply_deflator <- function(design_object) {
+  updated_design <- update(
+    design_object,
+    VD5007_real = VD5007 * CO2,
+    VD5008_real = VD5008 * CO2
+  )
+  
+  return(updated_design)
+}
+
+turn_numeric <- function(design_object) {
+  updated_design <- update(
+    design_object,
+    VD3005_num = as.numeric(as.character(VD3005))
+    )
+  
+  return(updated_design)
+}
