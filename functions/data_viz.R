@@ -120,7 +120,6 @@ generate_tenure_table <- function(design_obj, tenure_col = "tenure_condition") {
 
 library(survey)
 
-# Define the function
 generate_summary <- function(var_name, design_obj) {
   
   # 1. Convert the string variable name into a formula (e.g., "V2009" becomes ~V2009)
@@ -141,4 +140,81 @@ generate_summary <- function(var_name, design_obj) {
   
   cat("\nQuantiles:\n\n")
   print(quantiles_val)
+}
+
+generate_summary_table <- function(design_obj) {
+  
+  # 1. Define the variables you want to analyze
+  target_vars <- c("V2009", "VD2003", "VD3005_num", 
+                   "VD5007_real", "VD5008_real", 
+                   "wealth_index", "head_dependency")
+  
+  # Initialize an empty list to store the results
+  results_list <- list()
+  
+  # 2. Loop through each variable to calculate the statistics
+  for (var in target_vars) {
+    
+    # Check if the variable actually exists in the survey object to prevent crashes
+    if (var %in% names(design_obj$variables)) {
+      
+      # Convert the string to a formula dynamically (e.g., "V2009" becomes ~V2009)
+      fmla <- as.formula(paste0("~", var))
+      
+      # Calculate the weighted statistics
+      # Note: We use na.rm = TRUE to handle missing data gracefully
+      mean_obj   <- svymean(fmla, design_obj, na.rm = TRUE)
+      var_obj    <- svyvar(fmla, design_obj, na.rm = TRUE)
+      median_obj <- svyquantile(fmla, design_obj, quantiles = 0.5, na.rm = TRUE)
+      
+      # Extract the pure numeric values
+      mean_val   <- as.numeric(mean_obj[1])
+      var_val    <- as.numeric(var_obj[1])
+      
+      # Calculate standard deviation by taking the square root of the variance
+      sd_val     <- sqrt(var_val)
+      
+      # svyquantile returns a slightly more complex list structure in newer versions
+      median_val <- as.numeric(median_obj[[var]][1])
+      
+      # Store in a temporary data frame
+      results_list[[var]] <- data.frame(
+        Variable = var,
+        Mean = mean_val,
+        Median = median_val,
+        Standard_Deviation = sd_val,
+        stringsAsFactors = FALSE
+      )
+      
+    } else {
+      warning(sprintf("Variable '%s' not found in the design object. Skipping.", var))
+    }
+  }
+  
+  # 3. Combine all the individual rows into one clean data frame
+  summary_df <- bind_rows(results_list)
+  
+  # 4. Render as a beautifully formatted 'gt' table
+  final_table <- summary_df %>%
+    gt() %>%
+    tab_header(
+      title = "Weighted Summary Statistics",
+      subtitle = "Mean, Median, and Standard Deviation for Selected PNADC Variables"
+    ) %>%
+    # Format the column labels to look clean (replaces underscore with a space)
+    cols_label(
+      Standard_Deviation = "Standard Deviation"
+    ) %>%
+    # Format numbers to 2 decimal places for readability
+    fmt_number(
+      columns = c(Mean, Median, Standard_Deviation),
+      decimals = 2
+    ) %>%
+    # Add some styling to the column headers
+    tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_column_labels()
+    )
+  
+  return(final_table)
 }

@@ -122,7 +122,7 @@ build_wealth_index <- function(design_obj) {
   raw_data <- raw_data %>%
     mutate(
       across(c(S01023, S01024, S01025, S01028, S01029, S01031, 
-               S01011A, V2001, S01002, S01003, S01007, S01012A, 
+               S01011A, V2001, S01002, S01003, S01012A, 
                S01014, S01010, S01005), ~as.numeric(as.character(.))),
       
       # 1. DURABLE GOODS SCORE
@@ -153,13 +153,12 @@ build_wealth_index <- function(design_obj) {
       # 3. INADEQUATE HOUSING PENALTIES
       penalty_walls  = as.numeric(S01002 != 1),
       penalty_roof   = as.numeric(!S01003 %in% c(1, 2, 3, 4)),
-      penalty_water  = as.numeric(!S01007 %in% c(1, 2)),
       penalty_sewage = as.numeric(!S01012A %in% c(1, 2, 3)),
       penalty_elec   = as.numeric(S01014 != 1),
       penalty_piped  = as.numeric(S01010 != 1),
       penalty_crowd  = as.numeric((V2001 / S01005) >= 3),
       
-      total_penalty  = penalty_walls + penalty_roof + penalty_water + 
+      total_penalty  = penalty_walls + penalty_roof + 
         penalty_sewage + penalty_elec + penalty_piped + penalty_crowd,
       
       # 4. FINAL WEALTH INDEX
@@ -167,12 +166,12 @@ build_wealth_index <- function(design_obj) {
     ) %>%
     
     # 4. DROP COLUMNS
-    select(-score_fridge, -score_durables, -bath_ratio, -score_baths, 
+    select(-score_fridge, -score_durables, -score_baths, 
            -starts_with("penalty_"), -total_penalty,
            
            # Drop the raw housing/durable goods variables you no longer need
            -S01023, -S01024, -S01025, -S01028, -S01029, -S01031, 
-           -S01011A, -S01002, -S01003, -S01007, -S01012A, -S01014, 
+           -S01011A, -S01002, -S01003, -S01012A, -S01014, 
            -S01010, -S01005, -V2001)
   
   # 5. REASSIGN AND CLEAN UP ---
@@ -181,6 +180,32 @@ build_wealth_index <- function(design_obj) {
   
   # Final garbage collection
   gc()
+  
+  return(design_obj)
+}
+
+build_head_dependency <- function(design_obj) {
+  
+  # 1. GET DATA
+  raw_data <- design_obj$variables
+  
+  # 2. CALCULATION
+  raw_data <- raw_data %>%
+    mutate(
+      VD4046_num = as.numeric(as.character(VD4046_real)),
+      VD5007_num = as.numeric(as.character(VD5007_real)),
+      
+      head_dependency = if_else(
+        VD5007_num > 0, 
+        VD4046_num / VD5007_num, 
+        NA_real_
+      )
+    ) %>%
+    # Drop temporary calculation columns
+    select(-VD4046_num, -VD5007_num)
+  
+  # 3. Reassign to survey object
+  design_obj$variables <- raw_data
   
   return(design_obj)
 }
