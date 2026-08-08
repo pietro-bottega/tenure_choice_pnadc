@@ -76,7 +76,8 @@ apply_deflator <- function(design_object) {
   updated_design <- update(
     design_object,
     VD5007_real = VD5007 * CO2,
-    VD5008_real = VD5008 * CO2
+    VD5008_real = VD5008 * CO2,
+    VD4046_real = VD4046 * CO2
   )
   
   return(updated_design)
@@ -89,4 +90,97 @@ turn_numeric <- function(design_object) {
     )
   
   return(updated_design)
+}
+
+build_wealth_index <- function(design_obj) {
+  
+  # --- 1. CALCULATE BATH PER CAPITA QUARTILE ---
+  temp_design <- update(design_obj, 
+                        bath_per_capita = as.numeric(as.character(S01011A)) / 
+                          as.numeric(as.character(V2001)))
+  
+  # Extract the weighted quartiles
+  bath_quants <- svyquantile(~bath_per_capita, temp_design, 
+                             quantiles = c(0.25, 0.50, 0.75, 1), 
+                             na.rm = TRUE)
+  
+  # Extract the exact numeric cutoffs dynamically
+  q1 <- bath_quants$bath_per_capita[1]
+  q2 <- bath_quants$bath_per_capita[2]
+  q3 <- bath_quants$bath_per_capita[3]
+  q4 <- bath_quants$bath_per_capita[4]
+  
+  # Clean up temporary design
+  rm(temp_design)
+  gc()
+  
+  # --- 2. EXTRACT DATA ---
+  # Use raw data to lower RAM usage
+  raw_data <- design_obj$variables
+  
+  # --- 3: TRANSFORM DATA ---
+  raw_data <- raw_data %>%
+    mutate(
+      across(c(S01023, S01024, S01025, S01028, S01029, S01031, 
+               S01011A, V2001, S01002, S01003, S01007, S01012A, 
+               S01014, S01010, S01005), ~as.numeric(as.character(.))),
+      
+      # 1. DURABLE GOODS SCORE
+      score_fridge = case_when(
+        S01023 == 2 ~ 1.5,
+        S01023 == 1 ~ 1.0,
+        TRUE ~ 0
+      ),
+      
+      score_durables = score_fridge + 
+        as.numeric(S01024 == 1) + 
+        as.numeric(S01025 == 1) + 
+        as.numeric(S01028 == 1) + 
+        as.numeric(S01029 == 1) + 
+        as.numeric(S01031 == 1),
+      
+      # 2. BATHROOMS PER PERSON SCORE (Using dynamic cutoffs)
+      bath_ratio = S01011A / V2001,
+      
+      score_baths = case_when(
+        bath_ratio <= q4 ~ 1.0,        # First quartile 100-75
+        bath_ratio <= q3 ~ 0.5,        # Second quartile 75-50
+        bath_ratio <= q2 ~ -0.5,       # Third quartile 50-25
+        bath_ratio >  q1 ~ -1.0,       # Forth quartile 25-0
+        TRUE ~ 0                       # Fallback for NAs
+      ),
+      
+      # 3. INADEQUATE HOUSING PENALTIES
+      penalty_walls  = as.numeric(S01002 != 1),
+      penalty_roof   = as.numeric(!S01003 %in% c(1, 2, 3, 4)),
+      penalty_water  = as.numeric(!S01007 %in% c(1, 2)),
+      penalty_sewage = as.numeric(!S01012A %in% c(1, 2, 3)),
+      penalty_elec   = as.numeric(S01014 != 1),
+      penalty_piped  = as.numeric(S01010 != 1),
+      penalty_crowd  = as.numeric((V2001 / S01005) >= 3),
+      
+      total_penalty  = penalty_walls + penalty_roof + penalty_water + 
+        penalty_sewage + penalty_elec + penalty_piped + penalty_crowd,
+      
+      # 4. FINAL WEALTH INDEX
+      wealth_index   = score_durables + score_baths - total_penalty
+    ) %>%
+    
+    # 4. DROP COLUMNS
+    select(-score_fridge, -score_durables, -bath_ratio, -score_baths, 
+           -starts_with("penalty_"), -total_penalty,
+           
+           # Drop the raw housing/durable goods variables you no longer need
+           -S01023, -S01024, -S01025, -S01028, -S01029, -S01031, 
+           -S01011A, -S01002, -S01003, -S01007, -S01012A, -S01014, 
+           -S01010, -S01005, -V2001)
+  
+  # 5. REASSIGN AND CLEAN UP ---
+  # Put the mutated data back into the survey design object safely
+  design_obj$variables <- raw_data
+  
+  # Final garbage collection
+  gc()
+  
+  return(design_obj)
 }
