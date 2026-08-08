@@ -387,34 +387,6 @@ generate_summary("wealth_index", pnadc)
 #### Dependência econômica
 
 ```{r}
-build_head_dependency <- function(design_obj) {
-  
-  # 1. GET DATA
-  raw_data <- design_obj$variables
-  
-  # 2. CALCULATION
-  raw_data <- raw_data %>%
-    mutate(
-      VD4046_num = as.numeric(as.character(VD4046_real)),
-      VD5007_num = as.numeric(as.character(VD5007_real)),
-      
-      head_dependency = if_else(
-        VD5007_num > 0, 
-        VD4046_num / VD5007_num, 
-        NA_real_
-      )
-    ) %>%
-    # Drop temporary calculation columns
-    select(-VD4046_num, -VD5007_num)
-  
-  # 3. Reassign to survey object
-  design_obj$variables <- raw_data
-  
-  return(design_obj)
-}
-```
-
-```{r}
 pnadc <- build_head_dependency(pnadc)
 ```
 
@@ -431,3 +403,7 @@ Localização
 - V1023: Tipo de área (Capital, Resto da RM, Resto da RIDE como *large cities* e Resto da UF como *small cities*)
 
 - Macrorregião: Norte, Nordeste, Sudeste, Sul e Centro-Oeste
+
+```{r}
+generate_summary_table(pnadc)
+```
