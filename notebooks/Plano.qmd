@@ -38,6 +38,7 @@ variables <- c('UPA', 'V1008', 'V1014', #identifiers
                'S01023', 'S01024', 'S01025', 'S01028', 'S01029', 'S01031', 
                'S01011A', 'V2001', 'S01002', 'S01003', 'S01012A', 
                'S01014', 'S01010', 'S01005', #wealth index
+               'V2010', 'VD4009', #vulnerability
                'V2009', 'VD2003', 'VD2004') # household and lifecycle characteristics
 
 pnadc <- get_filtered_pnadc(
@@ -75,7 +76,6 @@ print(format(pop_total, big.mark = ",", scientific = FALSE))
 **Notas:** O que está sendo classificado como outros aqui são os casos em que a condição de ocupação é indicada como "outra condição".
 
 ```{r}
-#| echo: false
 pnadc <- classify_tenure_condition(pnadc)
 ```
 
@@ -382,7 +382,7 @@ generate_summary("wealth_index", pnadc)
 
   - *economic dependency (contribution of the household head to total income (head of household income/total household income)*
 
-- V4012: Nesse trabalho, ... era: (Empregado do setro privado, público; conta própria, etc) – *labor market status (employer and public servant versus informal employees, domestic servants, self-employed and un- employed)* (indicando acesso a um sistema de seguridade social.
+- VD4009: Posição na ocupação e categoria do emprego: (Empregado do setro privado, público; conta própria, etc) – *labor market status (employer and public servant versus informal employees, domestic servants, self-employed and un- employed)* (indicando acesso a um sistema de seguridade social.
 
 #### Dependência econômica
 
@@ -392,6 +392,51 @@ pnadc <- build_head_dependency(pnadc)
 
 ```{r}
 generate_summary("head_dependency", pnadc)
+```
+
+#### V2010: Cor ou raça
+
+1.  Branca
+2.  Preta
+3.  Amarela
+4.  Parda
+5.  Indígena
+
+<!-- -->
+
+9.  Ignorado
+
+```{r}
+svytable(~V2010, pnadc)
+```
+
+#### VD4009: Nesse trabalho... era? (Status no mercado de trabalho)
+
+|  |  |  |
+|------|---------------------------------|---------------------------------|
+| Tipo | Descrição |  |
+| 01 | Empregado no setor privado com carteira de trabalho assinada |   Trabalhador formal |
+| 02 | Empregado no setor privado sem carteira de trabalho assinada |   Informal |
+| 03 | Trabalhador doméstico com carteira de trabalho assinada |   Trabalhador formal |
+| 04 | Trabalhador doméstico sem carteira de trabalho assinada |   Informal |
+| 05 | Empregado no setor público com carteira de trabalho assinada |   Servidor público |
+| 06 | Empregado   no setor público sem carteira de trabalho assinada |   Informal |
+| 07 | Militar e servidor estatutário |   Servidor público |
+| 08 | Empregador |   Empregador |
+| 09 | Conta-própria |   Informal |
+| 10 | Trabalhador familiar auxiliar |   Informal |
+|  |  | Informal |
+
+```{r}
+svytable(~VD4009, pnadc)
+```
+
+```{r}
+pnadc <- classify_worker_status(pnadc)
+```
+
+```{r}
+svytable(~worker_status, pnadc)
 ```
 
 <br>

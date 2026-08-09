@@ -209,3 +209,31 @@ build_head_dependency <- function(design_obj) {
   
   return(design_obj)
 }
+
+classify_worker_status <- function(design_object) {
+  
+  updated_design <- update(
+    design_object,
+    worker_status = case_when(
+      # Trabalhador formal
+      VD4009 %in% c("01", "03") ~ "Trabalhador formal",
+      
+      # Servidor público
+      VD4009 %in% c("05", "07") ~ "Servidor público",
+      
+      # Empregador
+      VD4009 %in% c("08") ~ "Empregador",
+      
+      # Informal (Explicit codes)
+      VD4009 %in% c("02", "04", "06", "09", "10") ~ "Informal",
+      
+      # Catching explicit NAs and applying the new rule
+      is.na(VD4009) ~ "Informal",
+      
+      # Catch-all for any unexpected blanks or undefined codes
+      TRUE ~ "Informal"
+    )
+  )
+  
+  return(updated_design)
+}
