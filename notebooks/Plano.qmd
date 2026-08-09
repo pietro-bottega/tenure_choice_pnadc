@@ -10,6 +10,7 @@ library(PNADcIBGE)
 library(survey)
 library(survey)
 library(dplyr)
+library(tidyr)
 library(stringr)
 library(gt)
 source("../functions/data_treatment.R")
@@ -38,8 +39,9 @@ variables <- c('UPA', 'V1008', 'V1014', #identifiers
                'S01023', 'S01024', 'S01025', 'S01028', 'S01029', 'S01031', 
                'S01011A', 'V2001', 'S01002', 'S01003', 'S01012A', 
                'S01014', 'S01010', 'S01005', #wealth index
-               'V2010', 'VD4009', #vulnerability
-               'V2009', 'VD2003', 'VD2004') # household and lifecycle characteristics
+               'V2010', 'VD4009', 'V2007', #vulnerability
+               'V2009', 'VD2003', 'VD2004', # household and lifecycle characteristics
+               'V1023', 'UF') # location
 
 pnadc <- get_filtered_pnadc(
   target_year = 2025,
@@ -368,21 +370,19 @@ generate_summary("wealth_index", pnadc)
 
 - V2010: Cor ou raça
 
-- V2007: Sexo – *gender of the household head*
+- Mães solteiras com filhos menores de 14 anos
 
-  - Se fizer uma relação entre mesmo domicílio com mulheres com house head e que contenham crianças abaixo de 14 com situação de filho *(women with children under fourteen)*
+<!-- -->
 
-- Módulo de Migração de outra visita
+- Dependência econômica:
 
-*migrant: recent (up to four years living in the present municipality), middle (from four years up to nine years) and long-term mi- grant (more than nine years)*
-
-*migrant: recent (up to four years living in the present municipality), middle (from four years up to nine years) and long-term mi- grant (more than nine years)*
-
-- VD4046 (Rendimentos recebidos em todas as fontes) / VD5007 (Rendimento domiciliar)
+  - VD4046 (Rendimentos recebidos em todas as fontes) / VD5007 (Rendimento domiciliar)
 
   - *economic dependency (contribution of the household head to total income (head of household income/total household income)*
 
-- VD4009: Posição na ocupação e categoria do emprego: (Empregado do setro privado, público; conta própria, etc) – *labor market status (employer and public servant versus informal employees, domestic servants, self-employed and un- employed)* (indicando acesso a um sistema de seguridade social.
+- VD4009: Posição na ocupação e categoria do emprego: (Empregado do setro privado, público; conta própria, etc) – *labor market status (employer and public servant versus informal employees, domestic servants, self-employed and un- employed)* (indicando acesso a um sistema de seguridade social)
+
+- Imigração: FALTANTE NA PNADC
 
 #### Dependência econômica
 
@@ -401,30 +401,27 @@ generate_summary("head_dependency", pnadc)
 3.  Amarela
 4.  Parda
 5.  Indígena
-
-<!-- -->
-
-9.  Ignorado
+    9.  Ignorado
 
 ```{r}
 svytable(~V2010, pnadc)
 ```
 
-#### VD4009: Nesse trabalho... era? (Status no mercado de trabalho)
+#### VD4009: Posição na ocupação e categoria do emprego (Status no mercado de trabalho)
 
 |  |  |  |
-|------|---------------------------------|---------------------------------|
+|---------------|-----------------------------|-----------------------------|
 | Tipo | Descrição |  |
-| 01 | Empregado no setor privado com carteira de trabalho assinada |   Trabalhador formal |
-| 02 | Empregado no setor privado sem carteira de trabalho assinada |   Informal |
-| 03 | Trabalhador doméstico com carteira de trabalho assinada |   Trabalhador formal |
-| 04 | Trabalhador doméstico sem carteira de trabalho assinada |   Informal |
-| 05 | Empregado no setor público com carteira de trabalho assinada |   Servidor público |
-| 06 | Empregado   no setor público sem carteira de trabalho assinada |   Informal |
-| 07 | Militar e servidor estatutário |   Servidor público |
-| 08 | Empregador |   Empregador |
-| 09 | Conta-própria |   Informal |
-| 10 | Trabalhador familiar auxiliar |   Informal |
+| 01 | Empregado no setor privado com carteira de trabalho assinada | Trabalhador formal |
+| 02 | Empregado no setor privado sem carteira de trabalho assinada | Informal |
+| 03 | Trabalhador doméstico com carteira de trabalho assinada | Trabalhador formal |
+| 04 | Trabalhador doméstico sem carteira de trabalho assinada | Informal |
+| 05 | Empregado no setor público com carteira de trabalho assinada | Servidor público |
+| 06 | Empregado no setor público sem carteira de trabalho assinada | Informal |
+| 07 | Militar e servidor estatutário | Servidor público |
+| 08 | Empregador | Empregador |
+| 09 | Conta-própria | Informal |
+| 10 | Trabalhador familiar auxiliar | Informal |
 |  |  | Informal |
 
 ```{r}
@@ -439,15 +436,62 @@ pnadc <- classify_worker_status(pnadc)
 svytable(~worker_status, pnadc)
 ```
 
+#### Mães solteiras com filhos menores de 14 anos
+
+```{r}
+pnadc <- classify_single_mom(pnadc)
+```
+
+```{r}
+svytable(~single_mom, pnadc)
+```
+
+```{r}
+pnadc_test<- subset(pnadc, single_mom == 1)
+svytable(~V2007, pnadc_test) # validating
+svytable(~family_structure, pnadc_test)
+rm(pnadc_test)
+```
+
 <br>
 
-Localização
-
-- UF: Unidade da Federação
+### Localização
 
 - V1023: Tipo de área (Capital, Resto da RM, Resto da RIDE como *large cities* e Resto da UF como *small cities*)
 
 - Macrorregião: Norte, Nordeste, Sudeste, Sul e Centro-Oeste
+
+#### V1023: Tipo de área
+
+|  |  |  |
+|-------|---------------------------------|---------------------------------|
+| Tipo | Descrição | Classificação Região metropolitana |
+| 1 | Capital | 1 |
+| 2 | Resto da RM (Região Metropolitana, excluindo a capital) | 1 |
+| 3 | Resto da RIDE (Região Integrada de Desenvolvimento Econômico, excluindo a capital)  | 1 |
+| 4 | Resto da UF (Unidade da Federação, excluindo a região metropolitana e a RIDE) | 0 |
+
+```{r}
+pnadc <- classify_metropolitan_area(pnadc)
+```
+
+```{r}
+svytable(~metropolitan_area, pnadc)
+```
+
+#### Macrorregião 
+
+```{r}
+svytable(~UF, pnadc)
+```
+
+```{r}
+pnadc <- classify_macroregion(pnadc)
+```
+
+```{r}
+svytable(~macroregion, pnadc)
+```
 
 ```{r}
 generate_summary_table(pnadc)

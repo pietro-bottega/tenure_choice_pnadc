@@ -287,3 +287,35 @@ classify_single_mom <- function(filtered_design_obj, survey_year = 2025, survey_
   message("'single_mom' column has been added.")
   return(filtered_design_obj)
 }
+
+classify_metropolitan_area <- function(design_obj) {
+  
+  updated_design <- update(
+    design_obj,
+    metropolitan_area = case_when(
+      as.numeric(as.character(V1023)) %in% c(1, 2, 3) ~ 1,
+      as.numeric(as.character(V1023)) %in% c(4) ~ 0,
+      TRUE ~ NA_real_ 
+    )
+  )
+  
+  return(updated_design)
+}
+
+classify_macroregion <- function(design_obj) {
+  
+  updated_design <- update(
+    design_obj,
+    # as.character() ensures this works perfectly whether UF is a factor, string, or number
+    macroregion = case_when(
+      as.character(UF) %in% c(11, 12, 13, 14, 15, 16, 17) ~ "Norte",
+      as.character(UF) %in% c(21, 22, 23, 24, 25, 26, 27, 28, 29) ~ "Nordeste",
+      as.character(UF) %in% c(31, 32, 33, 55) ~ "Sudeste",
+      as.character(UF) %in% c(41, 42, 43) ~ "Sul",
+      as.character(UF) %in% c(50, 51, 52, 53) ~ "Centro-Oeste",
+      TRUE ~ NA_character_
+    )
+  )
+  
+  return(updated_design)
+}
