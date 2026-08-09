@@ -237,3 +237,53 @@ classify_worker_status <- function(design_object) {
   
   return(updated_design)
 }
+
+classify_single_mom <- function(filtered_design_obj, survey_year = 2025, survey_quarter = 1) {
+  
+  # 1. Download data
+  unfiltered_data <- PNADcIBGE::get_pnadc(
+    year = survey_year,
+    interview = survey_quarter,
+    vars = c('UPA', 'V1008', 'V1014', 'V2009', 'V2007', 'V2005'),
+    labels = TRUE,
+    design = FALSE
+  )
+  
+  # 2. Create a Household Summary
+  message("Summarizing household structures...")
+  household_summary <- unfiltered_data %>%
+    group_by(UPA, V1008, V1014) %>%
+    summarize(
+      has_child_under_14 = any(as.numeric(as.character(V2009)) < 14 & 
+                                 grepl("Filho|Enteado", V2005, ignore.case = TRUE), na.rm = TRUE),
+      
+      has_spouse = any(grepl("Cônjuge", V2005, ignore.case = TRUE), na.rm = TRUE),
+      .groups = 'drop'
+    )
+  
+  # 3. Extract data payload
+  message("Applying classification to the survey design object...")
+  filtered_data <- filtered_design_obj$variables
+  
+  # 4. Merge, Mutate, and Classify
+  filtered_data <- filtered_data %>%
+    left_join(household_summary, by = c("UPA", "V1008", "V1014")) %>%
+    mutate(
+      has_child_under_14 = replace_na(has_child_under_14, FALSE),
+      has_spouse = replace_na(has_spouse, FALSE)
+    ) %>%
+    mutate(
+      single_mom = case_when(
+        V2007 == "2" & has_child_under_14 == TRUE & has_spouse == FALSE ~ 1,
+        TRUE ~ 0
+      )
+    ) %>%
+    # Drop temporary columns
+    select(-has_child_under_14, -has_spouse)
+  
+  # 5. Plug the updated data into the survey object
+  filtered_design_obj$variables <- filtered_data
+  
+  message("'single_mom' column has been added.")
+  return(filtered_design_obj)
+}
