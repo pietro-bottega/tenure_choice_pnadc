@@ -136,13 +136,17 @@ generate_summary("VD2003", pnadc)
 | 4   | Composta   |
 
 ```{r}
-table_family_structure <- svytable(~VD2004, pnadc)
-table_family_structure
+svytable(~VD2004, pnadc)
 ```
+
+0 = Unipessoal
+
+1 = Não Unipessoal
 
 ```{r}
 pnadc <- classify_structure(pnadc)
-svytable(~family_structure, pnadc)
+table_family_structure = svytable(~family_structure, pnadc)
+table_family_structure
 ```
 
 <br>
@@ -404,13 +408,14 @@ generate_summary("head_dependency", pnadc)
     9.  Ignorado
 
 ```{r}
-svytable(~V2010, pnadc)
+table_race <- svytable(~V2010, pnadc)
+table_race
 ```
 
 #### VD4009: Posição na ocupação e categoria do emprego (Status no mercado de trabalho)
 
 |  |  |  |
-|---------------|-----------------------------|-----------------------------|
+|-----------------|---------------------------|---------------------------|
 | Tipo | Descrição |  |
 | 01 | Empregado no setor privado com carteira de trabalho assinada | Trabalhador formal |
 | 02 | Empregado no setor privado sem carteira de trabalho assinada | Informal |
@@ -443,7 +448,8 @@ pnadc <- classify_single_mom(pnadc)
 ```
 
 ```{r}
-svytable(~single_mom, pnadc)
+table_single_mom <- svytable(~single_mom, pnadc)
+table_single_mom
 ```
 
 ```{r}
@@ -464,7 +470,7 @@ rm(pnadc_test)
 #### V1023: Tipo de área
 
 |  |  |  |
-|-------|---------------------------------|---------------------------------|
+|---------------|-----------------------------|-----------------------------|
 | Tipo | Descrição | Classificação Região metropolitana |
 | 1 | Capital | 1 |
 | 2 | Resto da RM (Região Metropolitana, excluindo a capital) | 1 |
@@ -479,20 +485,50 @@ pnadc <- classify_metropolitan_area(pnadc)
 svytable(~metropolitan_area, pnadc)
 ```
 
-#### Macrorregião 
-
-```{r}
-svytable(~UF, pnadc)
-```
+#### Macrorregião
 
 ```{r}
 pnadc <- classify_macroregion(pnadc)
-```
-
-```{r}
 svytable(~macroregion, pnadc)
 ```
 
+## Tabelas de consolidação
+
+### Variáveis contínuas
+
 ```{r}
 generate_summary_table(pnadc)
+```
+
+```{r}
+print("Porcentagem de famílias não unipessoais")
+table_family_structure[2] / sum(table_family_structure)
+```
+
+```{r}
+print("Porcentagem de household heads brancos ou asiáticos")
+(table_race[1] + table_race[3]) / sum(table_race)
+```
+
+```{r}
+print("Porcentange de mais solteiras com filhos menores de 14 anos")
+table_single_mom[2] / sum(table_single_mom)
+```
+
+```{r}
+table_worker_status <- svytable(~worker_status, pnadc)
+table_worker_status
+```
+
+```{r}
+employed <- table_worker_status[1] / sum(table_worker_status)
+informal <- table_worker_status[2] / sum(table_worker_status)
+public <- table_worker_status[3] / sum(table_worker_status)
+formal <- table_worker_status[4] / sum(table_worker_status)
+
+
+employed
+informal
+public
+formal
 ```

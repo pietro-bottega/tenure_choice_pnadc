@@ -59,13 +59,13 @@ classify_structure <- function(design_obj) {
     # 2. Apply the specific structure classification rules
     family_structure = case_when(
       # If "Unipessoal" structure
-      VD2004 == '1' ~ "Unipessoal",
+      VD2004 == '1' ~ 0,
       
       # Handle missing data
-      is.na(VD2004) ~ NA_character_,
+      is.na(VD2004) ~ NA_real_,
       
       # Everything else is classified as "Não Unipessoal"
-      TRUE ~ "Não Unipessoal"
+      TRUE ~ 1
     )
   )
   
