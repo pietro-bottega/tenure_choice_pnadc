@@ -415,7 +415,7 @@ table_race
 #### VD4009: Posição na ocupação e categoria do emprego (Status no mercado de trabalho)
 
 |  |  |  |
-|-----------------|---------------------------|---------------------------|
+|----|----|----|
 | Tipo | Descrição |  |
 | 01 | Empregado no setor privado com carteira de trabalho assinada | Trabalhador formal |
 | 02 | Empregado no setor privado sem carteira de trabalho assinada | Informal |
@@ -470,7 +470,7 @@ rm(pnadc_test)
 #### V1023: Tipo de área
 
 |  |  |  |
-|---------------|-----------------------------|-----------------------------|
+|----|----|----|
 | Tipo | Descrição | Classificação Região metropolitana |
 | 1 | Capital | 1 |
 | 2 | Resto da RM (Região Metropolitana, excluindo a capital) | 1 |

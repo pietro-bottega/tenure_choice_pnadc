@@ -1,3 +1,5 @@
+# DATA IMPORTATION ---------------------------------------------
+
 get_filtered_pnadc <- function(target_year, target_interview, target_vars) {
   # 1. Download data
   pnadc_raw <- PNADcIBGE::get_pnadc(
@@ -12,6 +14,8 @@ get_filtered_pnadc <- function(target_year, target_interview, target_vars) {
   
   return(pnadc_filtered)
 }
+
+# DATA TREATMENT ---------------------------------------------
 
 classify_tenure_condition <- function(design_obj) {
   
@@ -28,16 +32,16 @@ classify_tenure_condition <- function(design_obj) {
     # 2. Apply the specific tenure classification rules
     tenure_condition = case_when(
       # i) Proprietários formais
-      S01017 %in% c('1', '2') & S01020 == '1' & S01020A == '1' ~ 'Proprietário Formal',
+      S01017 %in% c('1', '2') & S01020 == '1' & S01020A == '1' ~ 'proprietario_formal',
       
       # ii) Inquilinos formais
-      S01001 %in% c('1', '2') & S01017 %in% c('3', '4', '5', '6') ~ 'Inquilino Formal',
+      S01001 %in% c('1', '2') & S01017 %in% c('3', '4', '5', '6') ~ 'inquilino_formal',
       
       # iii) Proprietários informais
-      S01017 %in% c('1', '2') & (S01020 == '2' | S01020A == '2') ~ 'Proprietário Informal',
+      S01017 %in% c('1', '2') & (S01020 == '2' | S01020A == '2') ~ 'proprietario_informal',
       
       # iv) Inquilinos informais
-      S01001 == '3' & S01017 %in% c('3', '4', '5', '6') ~ 'Inquilino Informal',
+      S01001 == '3' & S01017 %in% c('3', '4', '5', '6') ~ 'inquilino_informal',
       
       # v) Outros
       TRUE ~ 'Outros'
@@ -59,13 +63,13 @@ classify_structure <- function(design_obj) {
     # 2. Apply the specific structure classification rules
     family_structure = case_when(
       # If "Unipessoal" structure
-      VD2004 == '1' ~ 0,
+      VD2004 == '1' ~ "unipessoal",
       
       # Handle missing data
-      is.na(VD2004) ~ NA_real_,
+      is.na(VD2004) ~ "nao_informado",
       
       # Everything else is classified as "Não Unipessoal"
-      TRUE ~ 1
+      TRUE ~ "nao_unipessoal"
     )
   )
   
@@ -87,7 +91,7 @@ turn_numeric <- function(design_object) {
   updated_design <- update(
     design_object,
     VD3005_num = as.numeric(as.character(VD3005))
-    )
+  )
   
   return(updated_design)
 }
@@ -216,22 +220,22 @@ classify_worker_status <- function(design_object) {
     design_object,
     worker_status = case_when(
       # Trabalhador formal
-      VD4009 %in% c("01", "03") ~ "Trabalhador formal",
+      VD4009 %in% c("01", "03") ~ "trabalhador_formal",
       
       # Servidor público
-      VD4009 %in% c("05", "07") ~ "Servidor público",
+      VD4009 %in% c("05", "07") ~ "servidor_publico",
       
       # Empregador
-      VD4009 %in% c("08") ~ "Empregador",
+      VD4009 %in% c("08") ~ "empregador",
       
       # Informal (Explicit codes)
-      VD4009 %in% c("02", "04", "06", "09", "10") ~ "Informal",
+      VD4009 %in% c("02", "04", "06", "09", "10") ~ "informal",
       
       # Catching explicit NAs and applying the new rule
-      is.na(VD4009) ~ "Informal",
+      is.na(VD4009) ~ "nao_informado",
       
       # Catch-all for any unexpected blanks or undefined codes
-      TRUE ~ "Informal"
+      TRUE ~ "nao_informado"
     )
   )
   
@@ -274,8 +278,8 @@ classify_single_mom <- function(filtered_design_obj, survey_year = 2025, survey_
     ) %>%
     mutate(
       single_mom = case_when(
-        V2007 == "2" & has_child_under_14 == TRUE & has_spouse == FALSE ~ 1,
-        TRUE ~ 0
+        V2007 == "2" & has_child_under_14 == TRUE & has_spouse == FALSE ~ "mae_solteira",
+        TRUE ~ "nao_mae_solteira"
       )
     ) %>%
     # Drop temporary columns
@@ -293,9 +297,9 @@ classify_metropolitan_area <- function(design_obj) {
   updated_design <- update(
     design_obj,
     metropolitan_area = case_when(
-      as.numeric(as.character(V1023)) %in% c(1, 2, 3) ~ 1,
-      as.numeric(as.character(V1023)) %in% c(4) ~ 0,
-      TRUE ~ NA_real_ 
+      as.numeric(as.character(V1023)) %in% c(1, 2, 3) ~ "area_metropolitana",
+      as.numeric(as.character(V1023)) %in% c(4) ~ "nao_area_metropolitana",
+      TRUE ~ "nao_informado"
     )
   )
   
@@ -308,14 +312,16 @@ classify_macroregion <- function(design_obj) {
     design_obj,
     # as.character() ensures this works perfectly whether UF is a factor, string, or number
     macroregion = case_when(
-      as.character(UF) %in% c(11, 12, 13, 14, 15, 16, 17) ~ "Norte",
-      as.character(UF) %in% c(21, 22, 23, 24, 25, 26, 27, 28, 29) ~ "Nordeste",
-      as.character(UF) %in% c(31, 32, 33, 55) ~ "Sudeste",
-      as.character(UF) %in% c(41, 42, 43) ~ "Sul",
-      as.character(UF) %in% c(50, 51, 52, 53) ~ "Centro-Oeste",
-      TRUE ~ NA_character_
+      as.character(UF) %in% c(11, 12, 13, 14, 15, 16, 17) ~ "norte",
+      as.character(UF) %in% c(21, 22, 23, 24, 25, 26, 27, 28, 29) ~ "nordeste",
+      as.character(UF) %in% c(31, 32, 33, 55) ~ "sudeste",
+      as.character(UF) %in% c(41, 42, 43) ~ "sul",
+      as.character(UF) %in% c(50, 51, 52, 53) ~ "centro-oeste",
+      TRUE ~ "nao_informado"
     )
   )
   
   return(updated_design)
 }
+
+# DATA VISUALIZATION ---------------------------------------------
