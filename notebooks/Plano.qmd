@@ -75,11 +75,11 @@ table_conditions
 #### V2009: Idade do morador na data de referência
 
 ```{r}
-generate_summary("V2009", pnadc)
+generate_summary("age", pnadc)
 ```
 
 ```{r}
-svyhist(~V2009, pnadc,
+svyhist(~age, pnadc,
         main = "Weighted Age Distribution",
         xlab = "Age (V2009)",
         ylab = "Density",
@@ -91,7 +91,7 @@ svyhist(~V2009, pnadc,
 #### VD2003: Número de componentes do domicílio
 
 ```{r}
-generate_summary("VD2003", pnadc)
+generate_summary("household_size", pnadc)
 ```
 
 #### VD2004: Espécie da unidade doméstica
@@ -265,7 +265,7 @@ generate_summary("head_dependency", pnadc)
     9.  Ignorado
 
 ```{r}
-table_race <- svytable(~V2010, pnadc)
+table_race <- svytable(~race, pnadc)
 table_race
 ```
 
@@ -290,11 +290,6 @@ table_race
 svytable(~worker_status, pnadc)
 ```
 
-```{r}
-pnadc_sem_workstatus <- subset(pnadc, worker_status == "nao_informado")
-svytable(~VD4009, pnadc_sem_workstatus)
-```
-
 #### Mães solteiras com filhos menores de 14 anos
 
 ```{r}
@@ -313,7 +308,7 @@ table_single_mom
 #### V1023: Tipo de área
 
 |  |  |
-|----------|------------------------------------------------------------|
+|---------------|---------------------------------------------------------|
 | Tipo | Descrição |
 | 1 | Capital |
 | 2 | Resto da RM (Região Metropolitana, excluindo a capital) |
@@ -328,11 +323,6 @@ svytable(~metropolitan_area, pnadc)
 
 ```{r}
 svytable(~macroregion, pnadc)
-```
-
-```{r}
-pnadc_sem_macroregion <- subset(pnadc, macroregion == "nao_informado")
-svytable(~UF, pnadc_sem_macroregion)
 ```
 
 ## Tabelas de consolidação

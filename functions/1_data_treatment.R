@@ -59,7 +59,8 @@ message("x variables created")
 # 4. RENAME AND DROP VARIABLES UNNECESSARY
 
 cols_unused <- c("V1022", "V1023", "V2003", "V2005", "V2007",
-                 "VD2004", "VD4009", "VD4046", "VD5007", "VD5008",
+                 "VD2004", "VD4009", "VD4046", "VD5007", "VD5008", "VD3005",
+                 "VD4046_real", "S01001",
                  "CO1", "CO1e", "CO2", "CO2e", "CO3", "bath_ratio")
 
 pnadc <- drop_variables(pnadc, cols_unused)

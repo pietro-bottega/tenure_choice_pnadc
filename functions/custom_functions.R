@@ -197,16 +197,16 @@ build_head_dependency <- function(design_obj) {
   raw_data <- raw_data %>%
     mutate(
       VD4046_num = as.numeric(as.character(VD4046_real)),
-      VD5007_num = as.numeric(as.character(VD5007_real)),
+      household_income = as.numeric(as.character(household_income)),
       
       head_dependency = if_else(
-        VD5007_num > 0, 
-        VD4046_num / VD5007_num, 
+        household_income > 0, 
+        VD4046_num / household_income, 
         NA_real_
       )
     ) %>%
     # Drop temporary calculation columns
-    select(-VD4046_num, -VD5007_num)
+    select(-VD4046_num)
   
   # 3. Reassign to survey object
   design_obj$variables <- raw_data
