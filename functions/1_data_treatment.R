@@ -28,8 +28,12 @@ pnadc <- get_filtered_pnadc(
   target_vars = variables
 )
 
+message("data loaded")
+
 # 2. TREAT y VARIABLES
 pnadc <- classify_tenure_condition(pnadc)
+
+message("y variable created")
 
 # 3. TREAT x VARIABLES
 
@@ -49,3 +53,25 @@ pnadc <- classify_single_mom(pnadc) # Single mom with child below 14
 # Location
 pnadc <- classify_metropolitan_area(pnadc) # Metropolitan area
 pnadc <- classify_macroregion(pnadc) # Macro region
+
+message("x variables created")
+
+# 4. RENAME AND DROP VARIABLES UNNECESSARY
+
+cols_unused <- c("V1022", "V1023", "V2003", "V2005", "V2007",
+                 "VD2004", "VD4009", "VD4046", "VD5007", "VD5008",
+                 "CO1", "CO1e", "CO2", "CO2e", "CO3", "bath_ratio")
+
+pnadc <- drop_variables(pnadc, cols_unused)
+
+
+var_new_names <- c(
+  "age" = "V2009",
+  "race" = "V2010",
+  "household_size" = "VD2003"
+)
+
+pnadc <- rename_variables(pnadc, var_new_names)
+
+message("cleaned survey object")
+

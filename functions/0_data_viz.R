@@ -14,10 +14,10 @@ generate_tenure_table <- function(design_obj, tenure_col = "tenure_condition") {
   
   # 2. Define Valid categories and Missing category
   valid_cats <- c(
-    'Proprietário Formal', 
-    'Inquilino Formal', 
-    'Proprietário Informal', 
-    'Inquilino Informal'
+    'proprietario_formal', 
+    'inquilino_formal', 
+    'proprietario_informal', 
+    'inquilino_informal'
   )
   
   # 3. Separate frequencies into Valid and Missing totals
@@ -59,7 +59,7 @@ generate_tenure_table <- function(design_obj, tenure_col = "tenure_condition") {
   # C. Add Missing row
   rows[[length(rows) + 1]] <- data.frame(
     Level_1 = "Faltante",
-    Condicao = "", # Leaves condition blank just like Python
+    Condicao = "", 
     Frequencia = missing_freq,
     Percentual = if (grand_total > 0) (missing_freq / grand_total) * 100 else 0,
     Percentual_valido = NA,

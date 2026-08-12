@@ -79,8 +79,8 @@ classify_structure <- function(design_obj) {
 apply_deflator <- function(design_object) {
   updated_design <- update(
     design_object,
-    VD5007_real = VD5007 * CO2,
-    VD5008_real = VD5008 * CO2,
+    household_income = VD5007 * CO2,
+    household_income_pcapita = VD5008 * CO2,
     VD4046_real = VD4046 * CO2
   )
   
@@ -90,7 +90,7 @@ apply_deflator <- function(design_object) {
 turn_numeric <- function(design_object) {
   updated_design <- update(
     design_object,
-    VD3005_num = as.numeric(as.character(VD3005))
+    education_years = as.numeric(as.character(VD3005))
   )
   
   return(updated_design)
@@ -176,7 +176,7 @@ build_wealth_index <- function(design_obj) {
            # Drop the raw housing/durable goods variables you no longer need
            -S01023, -S01024, -S01025, -S01028, -S01029, -S01031, 
            -S01011A, -S01002, -S01003, -S01012A, -S01014, 
-           -S01010, -S01005, -V2001)
+           -S01010, -S01005, -V2001, -S01017, -S01020, -S01020A)
   
   # 5. REASSIGN AND CLEAN UP ---
   # Put the mutated data back into the survey design object safely
@@ -314,7 +314,7 @@ classify_macroregion <- function(design_obj) {
     macroregion = case_when(
       as.character(UF) %in% c(11, 12, 13, 14, 15, 16, 17) ~ "norte",
       as.character(UF) %in% c(21, 22, 23, 24, 25, 26, 27, 28, 29) ~ "nordeste",
-      as.character(UF) %in% c(31, 32, 33, 55) ~ "sudeste",
+      as.character(UF) %in% c(31, 32, 33, 35) ~ "sudeste",
       as.character(UF) %in% c(41, 42, 43) ~ "sul",
       as.character(UF) %in% c(50, 51, 52, 53) ~ "centro-oeste",
       TRUE ~ "nao_informado"
@@ -322,6 +322,31 @@ classify_macroregion <- function(design_obj) {
   )
   
   return(updated_design)
+}
+
+drop_variables <- function(design_obj, cols_to_drop) {
+    design_obj$variables <- design_obj$variables[, !(names(design_obj$variables) %in% cols_to_drop), drop = FALSE]
+    
+    return(design_obj)
+  }
+
+rename_variables <- function(design_obj, rename_mapping) {
+  
+  # Get current column names
+  current_names <- colnames(design_obj$variables)
+  
+  # Loop through the mapping and replace names
+  for (new_name in names(rename_mapping)) {
+    old_name <- rename_mapping[[new_name]]
+    
+    # Find where the old name is and replace it
+    current_names[current_names == old_name] <- new_name
+  }
+  
+  # Assign the new names back to the internal dataset
+  colnames(design_obj$variables) <- current_names
+  
+  return(design_obj)
 }
 
 # DATA VISUALIZATION ---------------------------------------------
