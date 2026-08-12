@@ -383,5 +383,11 @@ colnames(pnadc)
 ```
 
 ```{r}
+all_columns <- colnames(pnadc)
+relevant_variables <- all_columns[!startsWith(all_columns, "V1032")]
+relevant_variables
+```
+
+```{r}
 svytable(~V2005, pnadc)
 ```
