@@ -5,6 +5,7 @@ library(dplyr)
 library(tidyr)
 library(stringr)
 library(gt)
+library(here)
 
 
-source("functions/1_data_treatment.R")
+source(here("functions","1_data_treatment.R"))

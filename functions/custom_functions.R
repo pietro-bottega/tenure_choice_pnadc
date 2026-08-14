@@ -199,10 +199,13 @@ build_head_dependency <- function(design_obj) {
       VD4046_num = as.numeric(as.character(VD4046_real)),
       household_income = as.numeric(as.character(household_income)),
       
+      VD4046_num = replace_na(VD4046_num, 0),
+      household_income = replace_na(household_income, 0),
+      
       head_dependency = if_else(
         household_income > 0, 
         VD4046_num / household_income, 
-        NA_real_
+        0
       )
     ) %>%
     # Drop temporary calculation columns

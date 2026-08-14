@@ -6,8 +6,7 @@ library(tidyr)
 library(stringr)
 library(gt)
 
-source("functions/custom_functions.R")
-
+source(here("functions","custom_functions.R"))
 
 # 1. IMPORT PNADC DATA
 

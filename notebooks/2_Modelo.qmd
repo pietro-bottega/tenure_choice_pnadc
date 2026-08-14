@@ -1,0 +1,15 @@
+---
+title: "2_Modelo"
+format: html
+---
+
+# Modelo
+
+Importar dados
+
+```{r}
+library(here)
+source(here("functions","pipeline.R"))
+```
+
+d
