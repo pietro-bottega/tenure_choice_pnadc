@@ -5,11 +5,110 @@ format: html
 
 # Modelo
 
-Importar dados
+## Importação dos dados
 
 ```{r}
 library(here)
+library(glmnet)
+```
+
+```{r}
 source(here("functions","pipeline.R"))
 ```
 
-d
+```{r}
+all_columns <- colnames(pnadc)
+relevant_variables <- all_columns[!startsWith(all_columns, "V1032")]
+relevant_variables
+```
+
+## LASSO
+
+### Aplicação
+
+Aqui será realizada o LASSO fora do objeto survey, já que o glmnet precisa receber uma matriz.
+
+Separando Y, e definindo o peso:
+
+```{r}
+pnadc_df <- pnadc$variables
+
+Y <- pnadc_df$tenure_condition
+pnadc_weights <- pnadc_df$V1032
+```
+
+Separando variáveis X:
+
+```{r}
+regression_variables <- c("age", "race", "household_size", "family_structure", "household_income", "household_income_pcapita", "education_years", "wealth_index", "head_dependency", "worker_status", "single_mom", "metropolitan_area", "macroregion")
+
+X <- pnadc_df[, regression_variables]
+```
+
+One hot encoding das variáveis qualitativas (uma das opções da variável)
+
+```{r}
+X_matrix <- model.matrix(~ . - 1, data = X)
+```
+
+Quais serão as variáveis utilizadas na regressão, após one hot encoding.
+
+```{r}
+colnames(X_matrix)
+```
+
+```{r}
+lasso <- cv.glmnet(x = X_matrix,
+                   y = Y,
+                   family = "multinomial",
+                   weights = pnadc_weights)
+```
+
+### Visualização
+
+```{r}
+lambda_otimo <- lasso$lambda.min
+print(paste("Melhor lambda:", lambda_otimo))
+```
+
+```{r}
+# O lambda mais rigoroso (1 erro padrão)
+lambda_1se <- lasso$lambda.1se
+print(paste("Lambda 1se:", lambda_1se))
+```
+
+```{r}
+# Extrai a lista de coeficientes usando o lambda ótimo
+coeficientes_lista <- coef(lasso, s = "lambda.min")
+
+# Cria um vetor vazio para guardar os nomes das variáveis selecionadas
+variaveis_selecionadas <- c()
+
+# Faz um loop por cada categoria do Multinomial para pegar as variáveis não zeradas
+for (i in 1:length(coeficientes_lista)) {
+  matriz_coef <- coeficientes_lista[[i]]
+  # Pega os nomes das linhas onde o coeficiente é diferente de zero
+  nomes_ativos <- rownames(matriz_coef)[which(matriz_coef != 0)]
+  variaveis_selecionadas <- c(variaveis_selecionadas, nomes_ativos)
+}
+
+# Remove duplicatas (já que uma variável pode aparecer em mais de uma categoria) e tira o "(Intercept)"
+variaveis_finais <- unique(variaveis_selecionadas)
+variaveis_finais <- variaveis_finais[variaveis_finais != "(Intercept)"]
+
+print("As variáveis que sobreviveram ao LASSO foram:")
+print(variaveis_finais)
+```
+
+```{r}
+plot(lasso)
+```
+
+```{r}
+# Plota o encolhimento dos coeficientes
+# Usamos lasso$glmnet.fit para acessar o modelo ajustado internamente
+plot(lasso$glmnet.fit, xvar = "lambda", label = TRUE)
+
+# Para adicionar uma linha vertical indicando onde o seu lambda.min parou:
+abline(v = log(lasso$lambda.min), col = "red", lty = 2, lwd = 2)
+```
