@@ -218,3 +218,85 @@ generate_summary_table <- function(design_obj) {
   
   return(final_table)
 }
+
+generate_macroregion_tenure_table <- function(design_obj) {
+  
+  # 1. Extract the full weighted cross-tabulation
+  abs_tab_full <- svytable(~macroregion + tenure_condition, design = design_obj)
+  
+  # 2. Drop the "Outros" category to calculate valid frequencies and percentages
+  # This subsets the table to keep only the columns that are not named "Outros"
+  abs_tab_validos <- abs_tab_full[, colnames(abs_tab_full) != "Outros", drop = FALSE]
+  
+  # 3. Calculate the valid absolute total frequency per macroregion (Row Margins)
+  freq_absoluta <- margin.table(abs_tab_validos, 1)
+  
+  # 4. Calculate the valid absolute total for the entire country (for the bottom row)
+  total_absoluto <- sum(freq_absoluta)
+  
+  # 5. Calculate the valid percentage distribution per macroregion (Row Proportions)
+  pct_tab <- prop.table(abs_tab_validos, margin = 1) * 100
+  
+  # 6. Calculate the valid overall percentage distribution for the "Total" row
+  pct_total <- prop.table(margin.table(abs_tab_validos, 2)) * 100
+  
+  # 7. Assemble the main data frame
+  df_macro <- data.frame(
+    macroregions = rownames(abs_tab_validos),
+    Frequencia = as.numeric(freq_absoluta),
+    as.data.frame.matrix(pct_tab),
+    stringsAsFactors = FALSE
+  )
+  
+  # 8. Assemble the "Total" row
+  df_total <- data.frame(
+    macroregions = "Total",
+    Frequencia = total_absoluto,
+    t(as.numeric(pct_total)),
+    stringsAsFactors = FALSE
+  )
+  
+  # Ensure column names match perfectly before binding
+  colnames(df_total) <- colnames(df_macro)
+  
+  # 9. Bind the rows together
+  df_final <- rbind(df_macro, df_total)
+  
+  # 10. Format into a publication-ready table using gt
+  gt_table <- df_final %>%
+    gt() %>%
+    tab_header(
+      title = "Condição de Ocupação por Macrorregião",
+      subtitle = "Frequência Absoluta (Válidos) e Distribuição Percentual"
+    ) %>%
+    # Format the absolute frequency with thousands separators
+    fmt_number(
+      columns = c(Frequencia),
+      decimals = 0,
+      use_seps = TRUE,
+      sep_mark = "."
+    ) %>%
+    # Format the tenure condition columns as percentages (1 decimal)
+    fmt_number(
+      columns = 3:ncol(df_final),
+      decimals = 1,
+      pattern = "{x}%"
+    ) %>%
+    # Rename the columns cleanly for the final output (Adjusted name)
+    cols_label(
+      macroregions = "Macrorregião",
+      Frequencia = "Frequência (válidos)"
+    ) %>%
+    # Add a spanner grouping the percentage columns together
+    tab_spanner(
+      label = "Frequência Percentual",
+      columns = 3:ncol(df_final)
+    ) %>%
+    # Bold the final "Total" row for readability
+    tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_body(rows = nrow(df_final))
+    )
+  
+  return(gt_table)
+}

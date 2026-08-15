@@ -28,6 +28,8 @@ relevant_variables
 
 Aqui será realizada o LASSO fora do objeto survey, já que o glmnet precisa receber uma matriz.
 
+REMOVER OUTROS!!!!!!!!!!!!!!!!!!!!!
+
 Separando Y, e definindo o peso:
 
 ```{r}
@@ -58,6 +60,15 @@ colnames(X_matrix)
 ```
 
 ```{r}
+ncol(X_matrix)
+```
+
+```{r}
+total_variaveis_iniciais <- ncol(X_matrix)
+print(paste("Número de variáveis antes do LASSO (X_matrix):", total_variaveis_iniciais))
+```
+
+```{r}
 lasso <- cv.glmnet(x = X_matrix,
                    y = Y,
                    family = "multinomial",
@@ -79,7 +90,7 @@ print(paste("Lambda 1se:", lambda_1se))
 
 ```{r}
 # Extrai a lista de coeficientes usando o lambda ótimo
-coeficientes_lista <- coef(lasso, s = "lambda.min")
+coeficientes_lista <- coef(lasso, s = "lambda.1se")
 
 # Cria um vetor vazio para guardar os nomes das variáveis selecionadas
 variaveis_selecionadas <- c()
@@ -101,6 +112,10 @@ print(variaveis_finais)
 ```
 
 ```{r}
+length(variaveis_finais)
+```
+
+```{r}
 plot(lasso)
 ```
 
@@ -111,4 +126,10 @@ plot(lasso$glmnet.fit, xvar = "lambda", label = TRUE)
 
 # Para adicionar uma linha vertical indicando onde o seu lambda.min parou:
 abline(v = log(lasso$lambda.min), col = "red", lty = 2, lwd = 2)
+```
+
+## Post-LASSO
+
+```{r}
+
 ```
