@@ -1,4 +1,4 @@
-# DATA IMPORTATION ---------------------------------------------
+# 1. DATA IMPORTATION AND TREATMENT ---------------------------------------------
 
 get_filtered_pnadc <- function(target_year, target_interview, target_vars) {
   # 1. Download data
@@ -14,8 +14,6 @@ get_filtered_pnadc <- function(target_year, target_interview, target_vars) {
   
   return(pnadc_filtered)
 }
-
-# DATA TREATMENT ---------------------------------------------
 
 classify_tenure_condition <- function(design_obj) {
   
@@ -352,4 +350,61 @@ rename_variables <- function(design_obj, rename_mapping) {
   return(design_obj)
 }
 
-# DATA VISUALIZATION ---------------------------------------------
+remove_missing <- function(design_obj) {
+  
+  design_valid <- subset(design_obj, tenure_condition != "Outros")
+  
+  return(design_valid)
+}
+
+# 2. MODELLING ---------------------------------------------
+
+create_matrix_national <- function(design_obj) {
+  
+  # Define preditors
+  regression_variables <- c("age", "race", "household_size", "family_structure", "household_income", "household_income_pcapita", "education_years", "wealth_index", "head_dependency", "worker_status", "single_mom", "metropolitan_area", "macroregion")
+  
+  # Use the dataframe
+  pnadc_df <- pnadc$variables
+  
+  Y <- pnadc_df$tenure_condition # dependent variables
+  X <- pnadc_df[, regression_variables] # predictors
+  pnadc_weights <- pnadc_df$V1032 # weights
+  
+  # Perform one hot encoding
+  
+  X_matrix <- model.matrix(~ . - 1, data = X)
+  
+  return(list(
+    X_matrix = X_matrix,
+    Y = Y,
+    weights = pnadc_weights
+  ))
+}
+
+run_lasso_national <- function(matrix_national) {
+  set.seed(123)
+  
+  lasso <- cv.glmnet(x = matrix_national$X_matrix,
+                     y = matrix_national$Y,
+                     family = "multinomial",
+                     weights = matrix_national$weights)
+  
+  return(lasso)
+}
+
+get_selected_vars <- function(coefs) {
+  selected_vars <- c()
+  
+  for (i in 1:length(coefs)) {
+    matriz_coef <- coefs[[i]]
+    # get lines with non zero coefs
+    active_name <- rownames(matriz_coef)[which(matriz_coef != 0)]
+    selected_vars <- c(selected_vars, active_name)
+  }
+  
+  final_vars <- unique(selected_vars)
+  final_vars <- final_vars[final_vars != "(Intercept)"]
+  
+  return(final_vars)
+}

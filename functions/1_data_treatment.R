@@ -73,5 +73,7 @@ var_new_names <- c(
 
 pnadc <- rename_variables(pnadc, var_new_names)
 
+pnadc <- remove_missing(pnadc)
+
 message("cleaned survey object")
 

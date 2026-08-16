@@ -10,6 +10,8 @@ format: html
 ```{r}
 library(here)
 library(glmnet)
+
+source(here("functions","custom_functions.R"))
 ```
 
 ```{r}
@@ -22,114 +24,104 @@ relevant_variables <- all_columns[!startsWith(all_columns, "V1032")]
 relevant_variables
 ```
 
-## LASSO
-
-### Aplicação
-
-Aqui será realizada o LASSO fora do objeto survey, já que o glmnet precisa receber uma matriz.
-
-REMOVER OUTROS!!!!!!!!!!!!!!!!!!!!!
-
-Separando Y, e definindo o peso:
-
-```{r}
-pnadc_df <- pnadc$variables
-
-Y <- pnadc_df$tenure_condition
-pnadc_weights <- pnadc_df$V1032
-```
-
-Separando variáveis X:
-
-```{r}
-regression_variables <- c("age", "race", "household_size", "family_structure", "household_income", "household_income_pcapita", "education_years", "wealth_index", "head_dependency", "worker_status", "single_mom", "metropolitan_area", "macroregion")
-
-X <- pnadc_df[, regression_variables]
-```
-
-One hot encoding das variáveis qualitativas (uma das opções da variável)
-
-```{r}
-X_matrix <- model.matrix(~ . - 1, data = X)
-```
+### Preparação
 
 Quais serão as variáveis utilizadas na regressão, após one hot encoding.
 
 ```{r}
-colnames(X_matrix)
+pnadc_matrix_national <- create_matrix_national(pnadc)
+colnames(pnadc_matrix_national$X_matrix)
 ```
 
 ```{r}
-ncol(X_matrix)
+ncol(pnadc_matrix_national$X_matrix)
+```
+
+## LASSO
+
+### Agregado Nacional
+
+```{r}
+lasso_national <- run_lasso_national(pnadc_matrix_national)
+lasso_national
 ```
 
 ```{r}
-total_variaveis_iniciais <- ncol(X_matrix)
-print(paste("Número de variáveis antes do LASSO (X_matrix):", total_variaveis_iniciais))
+lambda_1se_national <- lasso_national$lambda.1se
+print(paste("Lambda 1se:", lambda_1se_national))
 ```
 
 ```{r}
-lasso <- cv.glmnet(x = X_matrix,
-                   y = Y,
-                   family = "multinomial",
-                   weights = pnadc_weights)
-```
-
-### Visualização
-
-```{r}
-lambda_otimo <- lasso$lambda.min
-print(paste("Melhor lambda:", lambda_otimo))
+coefs_national <- coef(lasso_national, s = "lambda.1se")
 ```
 
 ```{r}
-# O lambda mais rigoroso (1 erro padrão)
-lambda_1se <- lasso$lambda.1se
-print(paste("Lambda 1se:", lambda_1se))
+select_vars_national <- get_selected_vars(coefs_national)
+print(select_vars_national)
 ```
 
 ```{r}
-# Extrai a lista de coeficientes usando o lambda ótimo
-coeficientes_lista <- coef(lasso, s = "lambda.1se")
+length(select_vars_national)
+```
 
-# Cria um vetor vazio para guardar os nomes das variáveis selecionadas
-variaveis_selecionadas <- c()
+```{r}
+plot(lasso_national)
+```
 
-# Faz um loop por cada categoria do Multinomial para pegar as variáveis não zeradas
-for (i in 1:length(coeficientes_lista)) {
-  matriz_coef <- coeficientes_lista[[i]]
-  # Pega os nomes das linhas onde o coeficiente é diferente de zero
-  nomes_ativos <- rownames(matriz_coef)[which(matriz_coef != 0)]
-  variaveis_selecionadas <- c(variaveis_selecionadas, nomes_ativos)
+### Modelos regionais
+
+```{r}
+library(glmnet)
+
+run_regional_lasso <- function(full_survey_obj) {
+  
+  # Extract the flat data frame ONCE
+  full_df <- full_survey_obj$variables
+  
+  # Define the regions
+  regions <- c("Norte", "Nordeste", "Sudeste", "Sul", "Centro-Oeste")
+  
+  # Create a list to store the full cv.glmnet model objects
+  lasso_models <- list()
+  
+  for (reg in regions) {
+    cat(sprintf("Processing region: %s...\n", reg))
+    
+    # Isolate the specific macroregion
+    temp_df <- subset(full_df, macroregion == reg)
+    
+    # Prepare the matrices and vectors
+    lasso_data <- prepare_lasso_data(temp_df)
+    
+    # Run the LASSO
+    cv_lasso <- cv.glmnet(
+      x = lasso_data$X_matrix,
+      y = lasso_data$Y,
+      family = "multinomial",
+      weights = lasso_data$weights
+    )
+    
+    # SAVE THE FULL MODEL OBJECT instead of just the coefficients
+    lasso_models[[reg]] <- cv_lasso
+    
+    # RAM Cleanup: Destroy the heavy data matrices but keep the model
+    rm(temp_df, lasso_data, cv_lasso)
+    gc()
+  }
+  
+  cat("All regional LASSO models adjusted successfully!\n")
+  return(lasso_models)
 }
-
-# Remove duplicatas (já que uma variável pode aparecer em mais de uma categoria) e tira o "(Intercept)"
-variaveis_finais <- unique(variaveis_selecionadas)
-variaveis_finais <- variaveis_finais[variaveis_finais != "(Intercept)"]
-
-print("As variáveis que sobreviveram ao LASSO foram:")
-print(variaveis_finais)
 ```
 
 ```{r}
-length(variaveis_finais)
-```
+# Run the pipeline (this stores the full models)
+regional_models <- run_regional_lasso(pnadc)
 
-```{r}
-plot(lasso)
-```
+# 1. Generate the cross-validation plot for a specific region
+plot(regional_models[["Nordeste"]])
 
-```{r}
-# Plota o encolhimento dos coeficientes
-# Usamos lasso$glmnet.fit para acessar o modelo ajustado internamente
-plot(lasso$glmnet.fit, xvar = "lambda", label = TRUE)
-
-# Para adicionar uma linha vertical indicando onde o seu lambda.min parou:
-abline(v = log(lasso$lambda.min), col = "red", lty = 2, lwd = 2)
-```
-
-## Post-LASSO
-
-```{r}
-
+# 2. Extract the coefficients for a specific region
+nordeste_coefficients <- coef(regional_models[["Nordeste"]], s = "lambda.min")
+print(nordeste_coefficients)
 ```
