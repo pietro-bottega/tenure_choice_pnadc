@@ -49,6 +49,23 @@ classify_tenure_condition <- function(design_obj) {
   return(updated_design)
 }
 
+consolidate_informal_condition <- function(design_obj) {
+  updated_design <- update(
+    design_obj,
+    
+    tenure_condition = as.factor(case_when(
+      
+      # consolidate informal conditions
+      tenure_condition %in% c('proprietario_informal', 'inquilino_informal') ~ 'morador_informal',
+      
+      TRUE ~ as.character(tenure_condition)
+    
+      ))
+    )
+  
+  return(updated_design)
+}
+
 classify_structure <- function(design_obj) {
   
   # update() evaluates expressions in the context of the survey design data
@@ -354,6 +371,11 @@ remove_missing <- function(design_obj) {
   
   design_valid <- subset(design_obj, tenure_condition != "Outros")
   
+  design_valid <- update(
+    design_valid, 
+    tenure_condition = droplevels(tenure_condition)
+  )
+  
   return(design_valid)
 }
 
@@ -365,7 +387,7 @@ create_matrix_national <- function(design_obj) {
   regression_variables <- c("age", "race", "household_size", "family_structure", "household_income", "household_income_pcapita", "education_years", "wealth_index", "head_dependency", "worker_status", "single_mom", "metropolitan_area", "macroregion")
   
   # Use the dataframe
-  pnadc_df <- pnadc$variables
+  pnadc_df <- design_obj$variables
   
   Y <- pnadc_df$tenure_condition # dependent variables
   X <- pnadc_df[, regression_variables] # predictors
@@ -407,4 +429,72 @@ get_selected_vars <- function(coefs) {
   final_vars <- final_vars[final_vars != "(Intercept)"]
   
   return(final_vars)
+}
+
+create_matrix_regional <- function(subset_df) {
+  
+  # Define preditors
+  regression_variables <- c("age", "race", "household_size", "family_structure", "household_income", "household_income_pcapita", "education_years", "wealth_index", "head_dependency", "worker_status", "single_mom", "metropolitan_area")
+  
+  Y <- subset_df$tenure_condition # dependent variables
+  X <- subset_df[, regression_variables] # predictors
+  subset_weights <- subset_df$V1032 # weights
+  
+  # check for columns with only 1 unique value
+  valid_columns <- sapply(X, function(col) length(unique(na.omit(col))) > 1)
+    dropped_cols <- names(valid_columns)[!valid_columns]
+  if (length(dropped_cols) > 0) {
+    cat("Dropping constant variable(s):", paste(dropped_cols, collapse = ", "), "\n")
+  }
+  X <- X[, valid_columns, drop = FALSE]
+  
+  # Perform one hot encoding
+  X_matrix <- model.matrix(~ . - 1, data = X)
+  
+  return(list(
+    X_matrix = X_matrix,
+    Y = Y,
+    weights = subset_weights
+  ))
+}
+
+run_regional_lasso <- function(survey_object) {
+  set.seed(123)
+  
+  # Extract the flat data frame
+  survey_df <- survey_object$variables
+  
+  # Define the regions
+  regions <- c("norte", "nordeste", "sudeste", "sul", "centro-oeste")
+  
+  # Create a list to store the full cv.glmnet model objects
+  lasso_models <- list()
+  
+  for (reg in regions) {
+    cat(sprintf("Processing region: %s...\n", reg))
+    
+    # Isolate the specific macroregion
+    temp_df <- subset(survey_df, macroregion == reg)
+    
+    # Prepare the matrices and vectors
+    lasso_data <- create_matrix_regional(temp_df)
+    
+    # Run the LASSO
+    cv_lasso <- cv.glmnet(
+      x = lasso_data$X_matrix,
+      y = lasso_data$Y,
+      family = "multinomial",
+      weights = lasso_data$weights
+    )
+    
+    # saving the model
+    lasso_models[[reg]] <- cv_lasso
+    
+    # RAM Cleanup
+    rm(temp_df, lasso_data, cv_lasso)
+    gc()
+  }
+  
+  cat("All regional LASSO models adjusted successfully!\n")
+  return(lasso_models)
 }

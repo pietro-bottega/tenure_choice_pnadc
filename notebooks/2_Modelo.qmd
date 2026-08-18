@@ -71,57 +71,99 @@ plot(lasso_national)
 ### Modelos regionais
 
 ```{r}
-library(glmnet)
+regional_models <- run_regional_lasso(pnadc)
+```
 
-run_regional_lasso <- function(full_survey_obj) {
+```{r}
+norte_coefs <- coef(regional_models[["norte"]], s = "lambda.1se")
+select_vars_norte <- get_selected_vars(norte_coefs)
+print(select_vars_norte)
+print(length(select_vars_norte))
+```
+
+```{r}
+nordeste_coefs <- coef(regional_models[["nordeste"]], s = "lambda.1se")
+select_vars_nordeste <- get_selected_vars(nordeste_coefs)
+print(select_vars_nordeste)
+print(length(select_vars_nordeste))
+```
+
+```{r}
+centroeste_coefs <- coef(regional_models[["centro-oeste"]], s = "lambda.1se")
+select_vars_centroeste <- get_selected_vars(centroeste_coefs)
+print(select_vars_centroeste)
+print(length(select_vars_centroeste))
+```
+
+```{r}
+sudeste_coefs <- coef(regional_models[["sudeste"]], s = "lambda.1se")
+select_vars_sudeste <- get_selected_vars(sudeste_coefs)
+print(select_vars_sudeste)
+print(length(select_vars_sudeste))
+```
+
+```{r}
+sul_coefs <- coef(regional_models[["sul"]], s = "lambda.1se")
+select_vars_sul <- get_selected_vars(sul_coefs)
+print(select_vars_sul)
+print(length(select_vars_sul))
+```
+
+```{r}
+create_selection_table <- function(all_variables, selected_lists) {
   
-  # Extract the flat data frame ONCE
-  full_df <- full_survey_obj$variables
+  # Initialize the data frame with the variable column
+  result_table <- data.frame(Variable = all_variables, stringsAsFactors = FALSE)
   
-  # Define the regions
-  regions <- c("Norte", "Nordeste", "Sudeste", "Sul", "Centro-Oeste")
+  # Define the exact order of the desired columns
+  regions <- c("Norte", "Nordeste", "Sudeste", "Sul", "Centro-Oeste", "Nacional")
   
-  # Create a list to store the full cv.glmnet model objects
-  lasso_models <- list()
-  
-  for (reg in regions) {
-    cat(sprintf("Processing region: %s...\n", reg))
-    
-    # Isolate the specific macroregion
-    temp_df <- subset(full_df, macroregion == reg)
-    
-    # Prepare the matrices and vectors
-    lasso_data <- prepare_lasso_data(temp_df)
-    
-    # Run the LASSO
-    cv_lasso <- cv.glmnet(
-      x = lasso_data$X_matrix,
-      y = lasso_data$Y,
-      family = "multinomial",
-      weights = lasso_data$weights
-    )
-    
-    # SAVE THE FULL MODEL OBJECT instead of just the coefficients
-    lasso_models[[reg]] <- cv_lasso
-    
-    # RAM Cleanup: Destroy the heavy data matrices but keep the model
-    rm(temp_df, lasso_data, cv_lasso)
-    gc()
+  # Loop to fill each column
+  for (region in regions) {
+    # Check if the region was provided in the selected list
+    if (region %in% names(selected_lists)) {
+      # Mark with 'X' if the variable is in that region's vector, otherwise leave blank
+      result_table[[region]] <- ifelse(all_variables %in% selected_lists[[region]], "X", "")
+    } else {
+      # If any model is missing, fill with blanks to maintain structure
+      result_table[[region]] <- ""
+    }
   }
   
-  cat("All regional LASSO models adjusted successfully!\n")
-  return(lasso_models)
+  return(result_table)
 }
 ```
 
 ```{r}
-# Run the pipeline (this stores the full models)
-regional_models <- run_regional_lasso(pnadc)
+# 1. Define the vector with ALL model variables (the row headers)
+all_vars <- c(
+  "age", "race1", "race2", "race3", "race4", "race5", "race9", 
+  "household_size", "family_structureunipessoal", "household_income", 
+  "household_income_pcapita", "education_years", "wealth_index", 
+  "head_dependency", "worker_statusinformal", "worker_statusnao_informado", 
+  "worker_statusservidor_publico", "worker_statustrabalhador_formal", 
+  "single_momnao_mae_solteira", "metropolitan_areanao_area_metropolitana", 
+  "macroregionnordeste", "macroregionnorte", "macroregionsudeste", "macroregionsul"
+)
 
-# 1. Generate the cross-validation plot for a specific region
-plot(regional_models[["Nordeste"]])
+# 2. Group your results into a named list.
+# Replace the placeholder variables below with your actual LASSO-generated vectors.
+results_list <- list(
+  "Norte"        = select_vars_norte,       
+  "Nordeste"     = select_vars_nordeste,
+  "Sudeste"      = select_vars_sudeste,
+  "Sul"          = select_vars_sul,
+  "Centro-Oeste" = select_vars_centroeste,
+  "Nacional"     = select_vars_national
+)
 
-# 2. Extract the coefficients for a specific region
-nordeste_coefficients <- coef(regional_models[["Nordeste"]], s = "lambda.min")
-print(nordeste_coefficients)
+# 3. Run the function
+final_table <- create_selection_table(all_vars, results_list)
+
+# View the result
+View(final_table)
+```
+
+```{r}
+print(select_vars_national)
 ```

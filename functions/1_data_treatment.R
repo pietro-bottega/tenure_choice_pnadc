@@ -32,6 +32,8 @@ message("data loaded")
 # 2. TREAT y VARIABLES
 pnadc <- classify_tenure_condition(pnadc)
 
+pnadc <- consolidate_informal_condition(pnadc) # remove to create full frequency charts
+
 message("y variable created")
 
 # 3. TREAT x VARIABLES
