@@ -10,6 +10,14 @@ format: html
 ```{r}
 library(here)
 library(glmnet)
+library(svyVGAM)
+library(PNADcIBGE) 
+library(survey) 
+library(dplyr) 
+library(tidyr) 
+library(stringr) 
+library(gt)
+library(tibble)
 
 source(here("functions","custom_functions.R"))
 ```
@@ -164,6 +172,141 @@ final_table <- create_selection_table(all_vars, results_list)
 View(final_table)
 ```
 
+## Post-LASSO
+
 ```{r}
-print(select_vars_national)
+clean_lasso_names <- function(matrix, variables) {
+  
+  # Create an empty vector
+  clean_vector <- c()
+  
+  # Iterate over variables in the matrix, one hot encoded
+  for (matrix_name in matrix) {
+    
+    # Iterate over the list of original variables
+    for (orig_var in variables) {
+      
+      # If the matrix name starts exactly with the original variable name
+      if (startsWith(matrix_name, orig_var)) {
+        clean_vector <- c(clean_vector, orig_var)
+        break # Exit the inner loop 
+      }
+    }
+  }
+  
+  # Get unique from multiple categories
+  clean_vector <- unique(clean_vector)
+  
+  return(clean_vector)
+}
+```
+
+```{r}
+clean_select_vars_national <- clean_lasso_names(select_vars_national, relevant_variables)
+print(clean_select_vars_national)
+```
+
+```{r}
+create_formula <- function(y, x) {
+  right_side <- paste(x, collapse = " + ")
+  equation <- paste(y, "~", right_side)
+  formula <- as.formula(equation)
+  return(formula)
+}
+```
+
+```{r}
+formula_national <- create_formula(
+  y = "tenure_condition",
+  x = clean_select_vars_national
+)
+
+formula_national
+```
+
+```{r}
+post_lasso_nationl <- svy_vglm(
+  formula = formula_national,
+  design = pnadc,
+  family = multinomial
+)
+```
+
+```{r}
+levels(pnadc$variables$tenure_condition)
+```
+
+```{r}
+# 1. Extract the raw summary object
+mod_sum <- summary(post_lasso_national)
+
+# 2. THE ULTIMATE FIX: Dynamically search for the matrix!
+# We ask R to look at the names inside the summary object and pick the right one.
+if ("coeftable" %in% names(mod_sum)) {
+  raw_matrix <- mod_sum$coeftable
+} else if ("coefficients" %in% names(mod_sum)) {
+  raw_matrix <- mod_sum$coefficients
+} else if ("coef3" %in% names(mod_sum)) {
+  raw_matrix <- mod_sum$coef3
+} else {
+  # Fallback if the object itself is the matrix
+  raw_matrix <- as.matrix(mod_sum)
+}
+
+# Quick safety check: If it's STILL empty, stop and warn the user
+if (is.null(raw_matrix) || nrow(raw_matrix) == 0) {
+  stop("Error: The matrix is still empty. Please run `names(summary(modelo_post_lasso_nacional))` in your console and check what names appear.")
+}
+
+# 3. Build a fresh data frame manually 
+clean_df <- data.frame(
+  Term = rownames(raw_matrix),
+  Estimate_B = as.numeric(raw_matrix[, 1]),
+  Std_Error = as.numeric(raw_matrix[, 2]),
+  Wald_z = as.numeric(raw_matrix[, 3]),
+  Sig = as.numeric(raw_matrix[, 4]),
+  stringsAsFactors = FALSE
+)
+
+# 4. Clean the text and calculate the Odds Ratio in Base R
+clean_df$Variable <- sub(":.*", "", clean_df$Term)
+clean_df$Equation <- sub(".*:", "Category ", clean_df$Term)
+clean_df$Exp_B <- exp(clean_df$Estimate_B)
+
+# 5. Order the columns exactly as needed
+final_data <- clean_df[, c("Equation", "Variable", "Estimate_B", "Std_Error", "Wald_z", "Sig", "Exp_B")]
+
+# 6. Render the academic table using gt
+final_table <- final_data %>%
+  group_by(Equation) %>%
+  gt() %>%
+  cols_label(
+    Estimate_B = "Estimate B",
+    Std_Error = "Std. error",
+    Wald_z = "Wald",
+    Sig = "Sig.",
+    Exp_B = "Exp(B)"
+  ) %>%
+  fmt_number(
+    columns = c(Estimate_B, Std_Error, Wald_z, Sig, Exp_B),
+    decimals = 3
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = Sig, rows = Sig < 0.05)
+  ) %>%
+  tab_header(
+    title = md("**TABLE 4**"),
+    subtitle = "Multinomial logit model tenure choice"
+  ) %>%
+  tab_options(
+    row_group.font.weight = "bold",
+    row_group.background.color = "#f0f0f0",
+    table.border.top.color = "black",
+    table.border.bottom.color = "black",
+    table_body.hlines.color = "lightgray"
+  )
+
+# Display the beautiful table
+final_table
 ```
