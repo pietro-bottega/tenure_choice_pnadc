@@ -162,10 +162,10 @@ build_wealth_index <- function(design_obj) {
       bath_ratio = S01011A / V2001,
       
       score_baths = case_when(
-        bath_ratio <= q4 ~ 1.0,        # First quartile 100-75
-        bath_ratio <= q3 ~ 0.5,        # Second quartile 75-50
-        bath_ratio <= q2 ~ -0.5,       # Third quartile 50-25
-        bath_ratio >  q1 ~ -1.0,       # Forth quartile 25-0
+        bath_ratio >= q3 ~ 1.0,        # First quartile 100-75
+        bath_ratio >= q2 ~ 0.5,        # Second quartile 75-50
+        bath_ratio >= q1 ~ -0.5,       # Third quartile 50-25
+        bath_ratio <  q1 ~ -1.0,       # Forth quartile 25-0
         TRUE ~ 0                       # Fallback for NAs
       ),
       
@@ -381,6 +381,8 @@ remove_missing <- function(design_obj) {
 
 # 2. MODELLING ---------------------------------------------
 
+## 2.1. LASSO ----------------------------------------------
+
 create_matrix_national <- function(design_obj) {
   
   # Define preditors
@@ -497,4 +499,38 @@ run_regional_lasso <- function(survey_object) {
   
   cat("All regional LASSO models adjusted successfully!\n")
   return(lasso_models)
+}
+
+## 2.2. POST- LASSO -----------------------------------------
+
+clean_lasso_names <- function(matrix, variables) {
+  
+  # Create an empty vector
+  clean_vector <- c()
+  
+  # Iterate over variables in the matrix, one hot encoded
+  for (matrix_name in matrix) {
+    
+    # Iterate over the list of original variables
+    for (orig_var in variables) {
+      
+      # If the matrix name starts exactly with the original variable name
+      if (startsWith(matrix_name, orig_var)) {
+        clean_vector <- c(clean_vector, orig_var)
+        break # Exit the inner loop 
+      }
+    }
+  }
+  
+  # Get unique from multiple categories
+  clean_vector <- unique(clean_vector)
+  
+  return(clean_vector)
+}
+
+create_formula <- function(y, x) {
+  right_side <- paste(x, collapse = " + ")
+  equation <- paste(y, "~", right_side)
+  formula <- as.formula(equation)
+  return(formula)
 }
