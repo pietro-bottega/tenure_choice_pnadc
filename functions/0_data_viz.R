@@ -300,3 +300,28 @@ generate_macroregion_tenure_table <- function(design_obj) {
   
   return(gt_table)
 }
+
+# 2. MODELLING ----------------------------------
+
+create_selection_table <- function(all_variables, selected_lists) {
+  
+  # Initialize the data frame with the variable column
+  result_table <- data.frame(Variable = all_variables, stringsAsFactors = FALSE)
+  
+  # Define the exact order of the desired columns
+  regions <- c("Norte", "Nordeste", "Sudeste", "Sul", "Centro-Oeste", "Nacional")
+  
+  # Loop to fill each column
+  for (region in regions) {
+    # Check if the region was provided in the selected list
+    if (region %in% names(selected_lists)) {
+      # Mark with 'X' if the variable is in that region's vector, otherwise leave blank
+      result_table[[region]] <- ifelse(all_variables %in% selected_lists[[region]], "X", "")
+    } else {
+      # If any model is missing, fill with blanks to maintain structure
+      result_table[[region]] <- ""
+    }
+  }
+  
+  return(result_table)
+}

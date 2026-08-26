@@ -27,18 +27,11 @@ source(here("functions","0_data_viz.R"))
 source(here("functions","pipeline.R"))
 ```
 
-```{r}
-all_columns <- colnames(pnadc)
-relevant_variables <- all_columns[!startsWith(all_columns, "V1032")]
-relevant_variables
-```
-
 ### Preparação
 
 Quais serão as variáveis utilizadas na regressão, após one hot encoding.
 
 ```{r}
-pnadc_matrix_national <- create_matrix_national(pnadc)
 colnames(pnadc_matrix_national$X_matrix)
 ```
 
@@ -51,12 +44,6 @@ ncol(pnadc_matrix_national$X_matrix)
 ### Agregado Nacional
 
 ```{r}
-lasso_national <- run_lasso_national(pnadc_matrix_national)
-lasso_national
-```
-
-```{r}
-lambda_1se_national <- lasso_national$lambda.1se
 print(paste("Lambda 1se:", lambda_1se_national))
 ```
 
@@ -65,7 +52,6 @@ coefs_national <- coef(lasso_national, s = "lambda.1se")
 ```
 
 ```{r}
-select_vars_national <- get_selected_vars(coefs_national)
 print(select_vars_national)
 ```
 
@@ -80,40 +66,29 @@ plot(lasso_national)
 ### Modelos regionais
 
 ```{r}
-regional_models <- run_regional_lasso(pnadc)
 ```
 
 ```{r}
-norte_coefs <- coef(regional_models[["norte"]], s = "lambda.1se")
-select_vars_norte <- get_selected_vars(norte_coefs)
 print(select_vars_norte)
 print(length(select_vars_norte))
 ```
 
 ```{r}
-nordeste_coefs <- coef(regional_models[["nordeste"]], s = "lambda.1se")
-select_vars_nordeste <- get_selected_vars(nordeste_coefs)
 print(select_vars_nordeste)
 print(length(select_vars_nordeste))
 ```
 
 ```{r}
-centroeste_coefs <- coef(regional_models[["centro-oeste"]], s = "lambda.1se")
-select_vars_centroeste <- get_selected_vars(centroeste_coefs)
 print(select_vars_centroeste)
 print(length(select_vars_centroeste))
 ```
 
 ```{r}
-sudeste_coefs <- coef(regional_models[["sudeste"]], s = "lambda.1se")
-select_vars_sudeste <- get_selected_vars(sudeste_coefs)
 print(select_vars_sudeste)
 print(length(select_vars_sudeste))
 ```
 
 ```{r}
-sul_coefs <- coef(regional_models[["sul"]], s = "lambda.1se")
-select_vars_sul <- get_selected_vars(sul_coefs)
 print(select_vars_sul)
 print(length(select_vars_sul))
 ```
@@ -149,64 +124,6 @@ View(final_table)
 ```
 
 ## Post-LASSO
-
-```{r}
-clean_lasso_names <- function(matrix, variables) {
-  
-  # Create an empty vector
-  clean_vector <- c()
-  
-  # Iterate over variables in the matrix, one hot encoded
-  for (matrix_name in matrix) {
-    
-    # Iterate over the list of original variables
-    for (orig_var in variables) {
-      
-      # If the matrix name starts exactly with the original variable name
-      if (startsWith(matrix_name, orig_var)) {
-        clean_vector <- c(clean_vector, orig_var)
-        break # Exit the inner loop 
-      }
-    }
-  }
-  
-  # Get unique from multiple categories
-  clean_vector <- unique(clean_vector)
-  
-  return(clean_vector)
-}
-```
-
-```{r}
-clean_select_vars_national <- clean_lasso_names(select_vars_national, relevant_variables)
-print(clean_select_vars_national)
-```
-
-```{r}
-create_formula <- function(y, x) {
-  right_side <- paste(x, collapse = " + ")
-  equation <- paste(y, "~", right_side)
-  formula <- as.formula(equation)
-  return(formula)
-}
-```
-
-```{r}
-formula_national <- create_formula(
-  y = "tenure_condition",
-  x = clean_select_vars_national
-)
-
-formula_national
-```
-
-```{r}
-post_lasso_nationl <- svy_vglm(
-  formula = formula_national,
-  design = pnadc,
-  family = multinomial
-)
-```
 
 ```{r}
 saveRDS(post_lasso_national, "post_lasso_national.rds")
