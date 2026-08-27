@@ -230,5 +230,61 @@ weighted_accuracy
 ```
 
 ```{r}
-post_lasso_national <- readRDS("modelo_nacional_ajustado.rds")
+# 1. Calculate precision: diagonal (correct predictions) divided by row sums (total predictions per category)
+precision_values <- diag(weighted_confusion_matrix) / rowSums(weighted_confusion_matrix)
+
+# Handle potential NaN values if a category was never predicted (row sum = 0)
+precision_values[is.na(precision_values)] <- 0
+
+# 2. Convert to percentage and round to 1 decimal place
+precision_percent <- round(precision_values * 100, 1)
+
+# 3. Create a clean summary data frame
+precision_table <- data.frame(
+  Categoria = names(precision_percent),
+  Precisao_Pct = paste0(precision_percent, "%"),
+  Valores_Exatos = precision_percent
+)
+
+print("Precisão (% de acertos das previsões) por Categoria:")
+print(precision_table)
+```
+
+```{r}
+library(ggplot2)
+library(scales)
+
+cm_df <- as.data.frame(weighted_confusion_matrix)
+
+ggplot(cm_df, aes(x = Predicted, y = Observed, fill = Freq)) +
+  geom_tile(color = "white") +
+  geom_text(
+    aes(
+      label = format(round(Freq, 0), big.mark = "."),
+      color = Freq > (max(Freq) / 2)
+    ), 
+    size = 4.5
+  ) +
+  scale_color_manual(values = c("TRUE" = "white", "FALSE" = "black"), guide = "none") +
+  scale_fill_distiller(
+    palette = "Blues", 
+    direction = 1,
+    labels = label_number(scale = 1e-6, suffix = "M")
+  ) +
+  labs(
+    x = "Categoria prevista",
+    y = "Categoria observada",
+    fill = ""
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(size = 10, color = "black"),
+    axis.title = element_text(size = 11, face = "plain"),
+    legend.position = "right"
+  )
+```
+
+```{r}
+post_lasso_national <- readRDS("post_lasso_national.rds")
 ```
