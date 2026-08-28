@@ -145,8 +145,8 @@ generate_summary <- function(var_name, design_obj) {
 generate_summary_table <- function(design_obj) {
   
   # 1. Define the variables you want to analyze
-  target_vars <- c("V2009", "VD2003", "VD3005_num", 
-                   "VD5007_real", "VD5008_real", 
+  target_vars <- c("age", "household_size", "education_years", 
+                   "household_income", "household_income_pcapita", 
                    "wealth_index", "head_dependency")
   
   # Initialize an empty list to store the results

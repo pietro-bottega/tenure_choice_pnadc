@@ -27,3 +27,5 @@ post_lasso_national <- svy_vglm(
   design = pnadc,
   family = multinomial(refLevel = 1)
 )
+
+saveRDS(post_lasso_national, "post_lasso_national.rds")
