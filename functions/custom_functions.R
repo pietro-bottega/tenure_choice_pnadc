@@ -373,7 +373,7 @@ remove_missing <- function(design_obj) {
   
   design_valid <- update(
     design_valid, 
-    tenure_condition = droplevels(tenure_condition)
+    tenure_condition = factor(tenure_condition)
   )
   
   return(design_valid)

@@ -301,6 +301,81 @@ generate_macroregion_tenure_table <- function(design_obj) {
   return(gt_table)
 }
 
+generate_macroregion_tenure_table_sample <- function(design_obj) {
+  
+  # 1. Extract the raw unweighted data frame from the survey object
+  raw_data <- design_obj$variables
+  
+  # 2. Create the unweighted cross-tabulation (Sample Size / N)
+  sample_tab_full <- table(raw_data$macroregion, raw_data$tenure_condition)
+  
+  # 3. Drop the "Outros" category
+  sample_tab_validos <- sample_tab_full[, colnames(sample_tab_full) != "Outros", drop = FALSE]
+  
+  # 4. Calculate column totals (bottom row) and row totals (new Total column)
+  col_totals <- margin.table(sample_tab_validos, margin = 2)
+  row_totals <- margin.table(sample_tab_validos, margin = 1)
+  grand_total <- sum(row_totals)
+  
+  # 5. Assemble the main data frame, appending the new "Total" column
+  df_macro <- data.frame(
+    macroregions = rownames(sample_tab_validos),
+    as.data.frame.matrix(sample_tab_validos),
+    Total = as.numeric(row_totals),
+    stringsAsFactors = FALSE
+  )
+  
+  # 6. Assemble the "Total" row, including the grand total
+  df_total <- data.frame(
+    macroregions = "Total",
+    t(as.numeric(col_totals)),
+    Total = grand_total,
+    stringsAsFactors = FALSE
+  )
+  
+  # Ensure column names match perfectly before binding
+  colnames(df_total) <- colnames(df_macro)
+  
+  # 7. Bind the rows together
+  df_final <- rbind(df_macro, df_total)
+  
+  # 8. Format into a publication-ready table using gt
+  gt_table <- df_final %>%
+    gt() %>%
+    tab_header(
+      title = "Condição de Ocupação por Macrorregião",
+      subtitle = "Tamanho da Amostra Não Ponderada (Válidos)"
+    ) %>%
+    # Format all numeric columns with thousands separators and no decimals
+    fmt_number(
+      columns = 2:ncol(df_final),
+      decimals = 0,
+      use_seps = TRUE,
+      sep_mark = "."
+    ) %>%
+    # Rename the macroregion column cleanly
+    cols_label(
+      macroregions = "Macrorregião"
+    ) %>%
+    # Group only the individual tenure categories under the spanner
+    tab_spanner(
+      label = "Tamanho da Amostra (N)",
+      columns = 2:(ncol(df_final) - 1)
+    ) %>%
+    # Bold the final "Total" row for readability
+    tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_body(rows = nrow(df_final))
+    ) %>%
+    # Bold the new "Total" column for readability
+    tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_body(columns = Total)
+    )
+  
+  return(gt_table)
+}
+
 # 2. MODELLING ----------------------------------
 
 create_selection_table <- function(all_variables, selected_lists) {

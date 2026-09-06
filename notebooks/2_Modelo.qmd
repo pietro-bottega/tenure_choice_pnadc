@@ -126,7 +126,7 @@ View(final_table)
 ## Post-LASSO
 
 ```{r}
-saveRDS(post_lasso_national, "post_lasso_national.rds")
+post_lasso_national <- readRDS("post_lasso_national.rds")
 ```
 
 ```{r}
@@ -283,8 +283,4 @@ ggplot(cm_df, aes(x = Predicted, y = Observed, fill = Freq)) +
     axis.title = element_text(size = 11, face = "plain"),
     legend.position = "right"
   )
-```
-
-```{r}
-post_lasso_national <- readRDS("post_lasso_national.rds")
 ```

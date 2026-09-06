@@ -321,7 +321,7 @@ table_race
 #### VD4009: Posição na ocupação e categoria do emprego (Status no mercado de trabalho)
 
 |  |  |  |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | Tipo | Descrição |  |
 | 01 | Empregado no setor privado com carteira de trabalho assinada | Trabalhador formal |
 | 02 | Empregado no setor privado sem carteira de trabalho assinada | Informal |
@@ -357,7 +357,7 @@ table_single_mom
 #### V1023: Tipo de área
 
 |  |  |
-|----|----|
+|------------------------------------|------------------------------------|
 | Tipo | Descrição |
 | 1 | Capital |
 | 2 | Resto da RM (Região Metropolitana, excluindo a capital) |
@@ -448,4 +448,9 @@ Cria diferentes conjuntos para cada região, conforme objetivo de comparar a efi
 ```{r}
 macroregion_tenure_table <- generate_macroregion_tenure_table(pnadc)
 macroregion_tenure_table
+```
+
+```{r}
+macroregion_tenure_table_sample <- generate_macroregion_tenure_table_sample(pnadc)
+macroregion_tenure_table_sample
 ```
