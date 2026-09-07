@@ -249,8 +249,9 @@ classify_worker_status <- function(design_object) {
       # Informal (Explicit codes)
       VD4009 %in% c("02", "04", "06", "09", "10") ~ "informal",
       
-      # Catching explicit NAs and applying the new rule
-      is.na(VD4009) ~ "nao_informado",
+      # Catching explicit NAs and checking if retired
+      is.na(VD4009) & V5004A %in% c("1", 1) ~ "aposentado",
+      is.na(VD4009) & V5004A %in% c("2", 2) ~ "nao_ocupado",
       
       # Catch-all for any unexpected blanks or undefined codes
       TRUE ~ "nao_informado"

@@ -5,6 +5,7 @@ library(dplyr)
 library(tidyr)
 library(stringr)
 library(gt)
+library(here)
 
 source(here("functions","custom_functions.R"))
 
@@ -19,7 +20,8 @@ variables <- c('UPA', 'V1008', 'V1014', #identifiers
                'S01014', 'S01010', 'S01005', #wealth index
                'V2010', 'VD4009', 'V2007', #vulnerability
                'V2009', 'VD2003', 'VD2004', # household and lifecycle characteristics
-               'V1023', 'UF') # location
+               'V1023', 'UF', #location
+               'V5004A', 'VD4001', 'VD4002') # new level on work status
 
 pnadc <- get_filtered_pnadc(
   target_year = 2025,
@@ -62,7 +64,8 @@ message("x variables created")
 cols_unused <- c("V1022", "V1023", "V2003", "V2005", "V2007",
                  "VD2004", "VD4009", "VD4046", "VD5007", "VD5008", "VD3005",
                  "VD4046_real", "S01001",
-                 "CO1", "CO1e", "CO2", "CO2e", "CO3", "bath_ratio")
+                 "CO1", "CO1e", "CO2", "CO2e", "CO3", "bath_ratio",
+                 "V5004A", "VD4001", "VD4002")
 
 pnadc <- drop_variables(pnadc, cols_unused)
 

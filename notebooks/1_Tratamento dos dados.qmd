@@ -321,7 +321,7 @@ table_race
 #### VD4009: Posição na ocupação e categoria do emprego (Status no mercado de trabalho)
 
 |  |  |  |
-|------------------------|------------------------|------------------------|
+|----|----|----|
 | Tipo | Descrição |  |
 | 01 | Empregado no setor privado com carteira de trabalho assinada | Trabalhador formal |
 | 02 | Empregado no setor privado sem carteira de trabalho assinada | Informal |
@@ -336,8 +336,51 @@ table_race
 |  |  | Não informado |
 
 ```{r}
+pnadc <- update(
+  pnadc,
+  VD4009 = fct_na_value_to_level(factor(VD4009), level = "nao_informado")
+)
+
+# 2. Run the svytable normally (it will now include "Faltante")
+svytable(~VD4009, design = pnadc)
+```
+
+```{r}
 svytable(~worker_status, pnadc)
 ```
+
+```{r}
+nao_informados <- subset(pnadc, worker_status == "nao_informado")
+svytable(~V5004A, design = nao_informados)
+```
+
+```{r}
+nao_informados_nao_aposentados <- subset(nao_informados, V5004A == "2")
+
+nao_informados_nao_aposentados <- update(
+  nao_informados_nao_aposentados,
+  VD4002 = fct_na_value_to_level(factor(VD4002), level = "Inativo")
+)
+
+svytable(~VD4001 + VD4002, design = nao_informados_nao_aposentados)
+```
+
+```{r}
+aposentados <- subset(nao_informados, V5004A == "1")
+
+aposentados <- update(
+  aposentados,
+  VD4002 = fct_na_value_to_level(factor(VD4002), level = "Inativo")
+)
+
+svytable(~VD4001 + VD4002, design = aposentados)
+```
+
+Dentre os não informados (26.124.312), 12.497.475 são chefes da família aposentados.
+
+Dentre os aposentados, a maioria (12.379.732) está fora da força de trabalho, enquanto 117.743 está na força de trabalho como desocupado.
+
+Dentro os não informados que não estão aposentados (13.626.837), a maioria (11.643.174) está fora da força de trabalho, enquanto (1.983.662) está na força de trabalho como desocupado.
 
 #### Mães solteiras com filhos menores de 14 anos
 
@@ -357,7 +400,7 @@ table_single_mom
 #### V1023: Tipo de área
 
 |  |  |
-|------------------------------------|------------------------------------|
+|----|----|
 | Tipo | Descrição |
 | 1 | Capital |
 | 2 | Resto da RM (Região Metropolitana, excluindo a capital) |
@@ -399,18 +442,22 @@ table_single_mom[2] / sum(table_single_mom)
 
 ```{r}
 table_worker_status <- svytable(~worker_status, pnadc)
+names_ws <- names(table_worker_status)
 table_worker_status
 ```
 
 ```{r}
-employed <- table_worker_status[1] / sum(table_worker_status)
-informal <- table_worker_status[2] / sum(table_worker_status)
-public <- table_worker_status[3] / sum(table_worker_status)
-formal <- table_worker_status[4] / sum(table_worker_status)
+retired <- table_worker_status[1] / sum(table_worker_status)
+employed <- table_worker_status[2] / sum(table_worker_status)
+informal <- table_worker_status[3] / sum(table_worker_status)
+not_occupied <- table_worker_status[4] / sum(table_worker_status)
+public <- table_worker_status[5] / sum(table_worker_status)
+formal <- table_worker_status[6] / sum(table_worker_status)
 
-
+retired
 employed
 informal
+not_occupied
 public
 formal
 ```
