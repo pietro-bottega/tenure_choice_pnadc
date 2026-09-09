@@ -13,6 +13,8 @@ source(here("functions","custom_functions.R"))
 
 # 1. PREPARE DATA
 
+pnadc <- rebalance_weights_national(pnadc)
+
 all_columns <- colnames(pnadc)
 relevant_variables <- all_columns[!startsWith(all_columns, "V1032")]
 

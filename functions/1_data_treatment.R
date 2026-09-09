@@ -34,7 +34,7 @@ message("data loaded")
 # 2. TREAT y VARIABLES
 pnadc <- classify_tenure_condition(pnadc)
 
-# pnadc <- consolidate_informal_condition(pnadc) # remove to create full frequency charts
+pnadc <- consolidate_informal_condition(pnadc) # remove to create full frequency charts
 
 message("y variable created")
 
@@ -68,7 +68,6 @@ cols_unused <- c("V1022", "V1023", "V2003", "V2005", "V2007",
                  "V5004A", "VD4001", "VD4002")
 
 pnadc <- drop_variables(pnadc, cols_unused)
-
 
 var_new_names <- c(
   "age" = "V2009",
