@@ -25,6 +25,7 @@ formula_national <- create_formula(
 post_lasso_national <- svy_vglm(
   formula = formula_national,
   design = pnadc,
+  weights = V1032_balanced,
   family = multinomial(refLevel = 1)
 )
 
