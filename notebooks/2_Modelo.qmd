@@ -29,6 +29,23 @@ source(here("functions","pipeline.R"))
 
 ### Preparação
 
+Balanceamento:
+
+```{r}
+# Esperado: TRUE
+
+identical(
+  round(pnadc_rebalanced$pweights, 6),
+  round(pnadc_rebalanced$variables$V1032_balanced, 6)
+)
+```
+
+```{r}
+# Esperado: FALSE
+
+identical(pnadc_rebalanced$pweights, pnadc$pweights)
+```
+
 Quais serão as variáveis utilizadas na regressão, após one hot encoding.
 
 ```{r}
@@ -126,7 +143,6 @@ View(final_table)
 ## Post-LASSO
 
 ```{r}
-post_lasso_national <- readRDS("post_lasso_national.rds")
 ```
 
 ```{r}

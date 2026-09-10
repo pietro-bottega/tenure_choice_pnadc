@@ -386,24 +386,49 @@ remove_missing <- function(design_obj) {
 
 rebalance_weights_national <- function(design_obj) {
   
-  # 1. Calculate natural proportion using the real distribuition
-  frequency <- table(design_obj$variables$tenure_condition)
+  # 1. Calculate natural proportion using the real distribution
+  frequency  <- table(design_obj$variables$tenure_condition)
   proportion <- prop.table(frequency)
   
   # 2. Create inverted weight and normalize most common class
   inverted_weight <- 1 / proportion
-  weight_penalty <- inverted_weight / min(inverted_weight)
+  weight_penalty  <- inverted_weight / min(inverted_weight)
   
   message("Class multiplier based on penalty:")
   print(round(weight_penalty, 2))
   
-  # 3. Compute penalties safely to avoid scoping/evaluation bugs in update()
-  penalties <- unname(weight_penalty[as.character(design_obj$variables$tenure_condition)])
-  penalties[is.na(penalties)] <- 1 # Fallback for any missing values
+  # 3. Compute penalties safely to avoid scoping/evaluation bugs
+  penalties <- as.vector(weight_penalty[as.character(design_obj$variables$tenure_condition)])
+  penalties[is.na(penalties)] <- 1  # Fallback for any missing values
   
-  # 4. Update the data payload directly to preserve the survey structure securely
-  design_obj$variables$penalty <- penalties
-  design_obj$variables$V1032_balanced <- design_obj$variables$V1032 * design_obj$variables$penalty
+  # 4. Capture population size BEFORE any weight change
+  pop_before <- sum(weights(design_obj, "sampling"))
+  
+  # 5. Anchor: rescale penalties so the total population is preserved
+  #    (raw penalties would inflate the total, since majority class = 1x
+  #    and every other class is >1x)
+  raw_total     <- sum(design_obj$variables$V1032 * penalties)
+  scale_factor  <- pop_before / raw_total
+  penalties_adj <- penalties * scale_factor
+  
+  # 6. Keep raw penalty for reporting/documentation purposes (methods section),
+  #    but use the anchored version for the actual weights used in estimation
+  design_obj$variables$penalty        <- penalties       # raw multiplier, for reporting
+  design_obj$variables$penalty_anchored <- penalties_adj # what's actually applied
+  design_obj$variables$V1032_balanced <- design_obj$variables$V1032 * penalties_adj
+  
+  # 7. Update the actual weight slots the survey package uses for estimation
+  design_obj$pweights <- design_obj$pweights * penalties_adj
+  if (!is.null(design_obj$repweights)) {
+    design_obj$repweights <- design_obj$repweights * penalties_adj  # recycles down columns
+  }
+  
+  # 8. Confirm population size is unchanged after anchoring
+  pop_after  <- sum(weights(design_obj, "sampling"))
+  message(sprintf(
+    "Population size: %.0f -> %.0f  (Δ %.4f%%, should be ~0 after anchoring)",
+    pop_before, pop_after, 100 * (pop_after / pop_before - 1)
+  ))
   
   return(design_obj)
 }
@@ -418,7 +443,9 @@ create_matrix_national <- function(design_obj) {
   
   Y <- pnadc_df$tenure_condition # dependent variables
   X <- pnadc_df[, regression_variables] # predictors
-  pnadc_weights <- pnadc_df$V1032_balanced # weights
+  pnadc_weights <- weights(design_obj, "sampling") # weights
+  
+  stopifnot(length(pnadc_weights) == nrow(X))
   
   # Perform one hot encoding
   
@@ -465,7 +492,7 @@ create_matrix_regional <- function(subset_df) {
   
   Y <- subset_df$tenure_condition # dependent variables
   X <- subset_df[, regression_variables] # predictors
-  subset_weights <- subset_df$V1032 # weights
+  subset_weights <- weights(design_obj, "sampling") # weights
   
   # check for columns with only 1 unique value
   valid_columns <- sapply(X, function(col) length(unique(na.omit(col))) > 1)

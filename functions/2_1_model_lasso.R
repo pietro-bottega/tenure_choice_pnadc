@@ -13,13 +13,13 @@ source(here("functions","custom_functions.R"))
 
 # 1. PREPARE DATA
 
-pnadc <- rebalance_weights_national(pnadc)
+pnadc_rebalanced <- rebalance_weights_national(pnadc)
 
-all_columns <- colnames(pnadc)
+all_columns <- colnames(pnadc_rebalanced)
 relevant_variables <- all_columns[!startsWith(all_columns, "V1032")]
 
 # Doing one hot encoding and generating a matrix with the survey object
-pnadc_matrix_national <- create_matrix_national(pnadc)
+pnadc_matrix_national <- create_matrix_national(pnadc_rebalanced)
 
 #2. SELECT VARIABLES
 
@@ -33,6 +33,8 @@ lambda_1se_national <- lasso_national$lambda.1se
 # Get selected vars
 coefs_national <- coef(lasso_national, s = "lambda.1se")
 select_vars_national <- get_selected_vars(coefs_national)
+
+clean_select_vars_national <- clean_lasso_names(select_vars_national, relevant_variables)
 
 message("Executing lasso for the regional models")
 

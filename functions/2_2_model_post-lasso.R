@@ -11,11 +11,7 @@ library(tibble)
 
 source(here("functions","custom_functions.R"))
 
-# 1. PREPARE DATA
-
-clean_select_vars_national <- clean_lasso_names(select_vars_national, relevant_variables)
-
-# 2. POST LASSO FOR NATIONAL MODEL 
+# 1. POST LASSO FOR NATIONAL MODEL 
 
 formula_national <- create_formula(
   y = "tenure_condition",
@@ -24,8 +20,7 @@ formula_national <- create_formula(
 
 post_lasso_national <- svy_vglm(
   formula = formula_national,
-  design = pnadc,
-  weights = V1032_balanced,
+  design = pnadc_rebalanced,
   family = multinomial(refLevel = 1)
 )
 
