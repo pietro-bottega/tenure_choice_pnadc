@@ -142,8 +142,7 @@ View(final_table)
 
 ## Post-LASSO
 
-```{r}
-```
+### Tarefa 1: Interpretação
 
 ```{r}
 # Extract the raw summary object
@@ -214,6 +213,246 @@ final_table <- final_data %>%
   )
 
 final_table
+```
+
+### Tarefa 2: previsão
+
+```{r}
+## =================================================================
+## Cluster-respecting K-fold CV for the national multinomial model
+## Evaluation metric: survey-weighted macro-F1
+## =================================================================
+## Assumes: pnadc_rebalanced_complete (svyrep.design, pweights/repweights
+## already balanced+anchored), formula_national (from create_formula()),
+## and VGAM/survey packages loaded.
+
+library(VGAM)
+library(survey)
+
+# ----------------------------------------------------------------
+# 1. Cluster-respecting fold assignment
+#    Whole clusters (not individual rows) are assigned to folds, so
+#    no cluster ever has members split across train and test.
+#    IMPORTANT: cluster_var should be the finest unit where correlation
+#    between observations is strongest (typically household id).
+#    If your design only carries a PSU-level id (e.g. "UPA"), that's a
+#    safer/coarser fallback, but prefer a household-level id if you
+#    have one -- PSU-level splitting can still leak household-level
+#    correlation across train/test.
+# ----------------------------------------------------------------
+create_cluster_folds <- function(design_obj, cluster_var, k = 10, seed = 123) {
+  set.seed(seed)
+  
+  cluster_ids <- design_obj$variables[[cluster_var]]
+  unique_clusters <- unique(cluster_ids)
+  unique_clusters <- sample(unique_clusters)  # shuffle order before assigning
+  
+  fold_assignment <- rep(1:k, length.out = length(unique_clusters))
+  cluster_to_fold  <- setNames(fold_assignment, as.character(unique_clusters))
+  
+  row_fold <- unname(cluster_to_fold[as.character(cluster_ids)])
+  
+  # Quick diagnostic: row counts per fold. Uneven cluster sizes (PSUs/
+  # households vary a lot in PNAD) can make folds unequal in row count
+  # even though they're equal in cluster count -- worth eyeballing.
+  print(table(row_fold))
+  
+  return(row_fold)
+}
+
+# ----------------------------------------------------------------
+# 2. Survey-weighted precision, recall, and F1 -- per class
+#    TP/FP/FN are computed as SUMS OF WEIGHTS, not raw row counts,
+#    consistent with treating each observation as representing its
+#    survey weight's worth of the population.
+# ----------------------------------------------------------------
+weighted_class_metrics <- function(y_true, y_pred, w, levels_all) {
+  y_true <- factor(y_true, levels = levels_all)
+  y_pred <- factor(y_pred, levels = levels_all)
+  
+  out <- data.frame(
+    class     = levels_all,
+    precision = NA_real_,
+    recall    = NA_real_,
+    f1        = NA_real_,
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in seq_along(levels_all)) {
+    cl <- levels_all[i]
+    tp <- sum(w[y_true == cl & y_pred == cl])
+    fp <- sum(w[y_true != cl & y_pred == cl])
+    fn <- sum(w[y_true == cl & y_pred != cl])
+    
+    precision <- if ((tp + fp) > 0) tp / (tp + fp) else 0
+    recall    <- if ((tp + fn) > 0) tp / (tp + fn) else 0
+    f1 <- if ((precision + recall) > 0) {
+      2 * precision * recall / (precision + recall)
+    } else 0
+    
+    out$precision[i] <- precision
+    out$recall[i]     <- recall
+    out$f1[i]          <- f1
+  }
+  
+  out
+}
+
+# ----------------------------------------------------------------
+# 3. Single fold: train on K-1 clusters, predict on the held-out fold
+# ----------------------------------------------------------------
+run_fold <- function(fold_i, row_fold, df, formula, weight_var, y_var, levels_all) {
+  
+  train_idx <- which(row_fold != fold_i)
+  test_idx  <- which(row_fold == fold_i)
+  
+  train_df <- df[train_idx, ]
+  test_df  <- df[test_idx, ]
+  
+  # Attach the weight as a column of the data frame itself, under a fixed
+  # name, and reference THAT column in weights= below. Passing a bare
+  # local variable (e.g. weights = train_w) is unreliable here: vglm()'s
+  # internal non-standard evaluation of `weights` doesn't reliably resolve
+  # a loose variable across the extra call-stack layers introduced by
+  # calling it from inside run_fold() inside a loop inside tryCatch().
+  # Putting it in `data=` sidesteps that entirely -- data is evaluated
+  # normally, not via frame-walking.
+  train_df$.wt <- train_df[[weight_var]]
+  test_df$.wt  <- test_df[[weight_var]]
+  
+  # Force the SAME full level set on both sides. If a category truly
+  # has zero training rows in this fold, vglm cannot estimate a
+  # coefficient for it -- fit will error and this fold is skipped
+  # (see tryCatch below). Worth checking per_class counts if that happens.
+  train_df[[y_var]] <- factor(train_df[[y_var]], levels = levels_all)
+  test_df[[y_var]]  <- factor(test_df[[y_var]],  levels = levels_all)
+  
+  fit <- tryCatch(
+    VGAM::vglm(formula, data = train_df, weights = .wt,
+               family = VGAM::multinomial(refLevel = 1)),
+    error = function(e) e
+  )
+  
+  if (inherits(fit, "error")) {
+    warning(sprintf("Fold %d failed to converge: %s", fold_i, conditionMessage(fit)))
+    return(NULL)
+  }
+  
+  pred_probs <- VGAM::predictvglm(fit, newdata = test_df, type = "response")
+  
+  # SANITY CHECK worth running once manually: confirm colnames(pred_probs)
+  # follows the same order as levels_all. VGAM's multinomial() column
+  # order can differ from plain factor level order in some setups.
+  pred_class <- levels_all[apply(pred_probs, 1, which.max)]
+  
+  class_metrics <- weighted_class_metrics(
+    y_true     = test_df[[y_var]],
+    y_pred     = pred_class,
+    w          = test_df$.wt,
+    levels_all = levels_all
+  )
+  
+  list(
+    fold          = fold_i,
+    n_train       = nrow(train_df),
+    n_test        = nrow(test_df),
+    macro_f1      = mean(class_metrics$f1),
+    class_metrics = class_metrics
+  )
+}
+
+# ----------------------------------------------------------------
+# 4. Full pipeline -- national model, no macroregion split
+# ----------------------------------------------------------------
+run_cv_national <- function(design_obj, formula, cluster_var,
+                            y_var = "tenure_condition",
+                            k = 10, seed = 123) {
+  
+  df <- design_obj$variables
+  weight_var <- ".sampling_weight"
+  df[[weight_var]] <- weights(design_obj, "sampling")
+  
+  # Guard against the class/dim bug from earlier in this pipeline --
+  # strip class/dim defensively in case an upstream weight column
+  # still carries a "table" class.
+  df[[weight_var]] <- as.vector(df[[weight_var]])
+  
+  levels_all <- levels(factor(df[[y_var]]))
+  
+  row_fold <- create_cluster_folds(design_obj, cluster_var, k = k, seed = seed)
+  
+  fold_results <- vector("list", k)
+  for (i in seq_len(k)) {
+    message(sprintf("Running fold %d/%d...", i, k))
+    fold_results[[i]] <- run_fold(
+      fold_i = i, row_fold = row_fold, df = df,
+      formula = formula, weight_var = weight_var,
+      y_var = y_var, levels_all = levels_all
+    )
+  }
+  
+  fold_results <- Filter(Negate(is.null), fold_results)
+  if (length(fold_results) < k) {
+    warning(sprintf("%d of %d folds failed and were dropped -- see warnings above.",
+                    k - length(fold_results), k))
+  }
+  # Fail loudly and clearly if every fold failed, rather than letting an
+  # empty list silently break sapply()/sd() downstream with an opaque
+  # "is.atomic(x) is not TRUE" error.
+  if (length(fold_results) == 0) {
+    stop("All folds failed -- see warnings above for the underlying error(s).")
+  }
+  
+  macro_f1_by_fold <- sapply(fold_results, function(x) x$macro_f1)
+  
+  # ---- Per-category table: mean (and SD) of precision/recall/F1 across
+  #      the K folds, one row per tenure_condition category. This is the
+  #      table to report alongside the headline macro-F1.
+  all_class_metrics <- do.call(rbind, lapply(fold_results, function(x) {
+    cbind(fold = x$fold, x$class_metrics)
+  }))
+  
+  class_table <- aggregate(
+    cbind(precision, recall, f1) ~ class,
+    data = all_class_metrics,
+    FUN  = mean
+  )
+  class_table_sd <- aggregate(
+    cbind(precision, recall, f1) ~ class,
+    data = all_class_metrics,
+    FUN  = sd
+  )
+  names(class_table_sd)[-1] <- paste0(names(class_table_sd)[-1], "_sd")
+  class_table <- merge(class_table, class_table_sd, by = "class")
+  
+  # Keep original category order (aggregate()/merge() alphabetizes by default)
+  class_table <- class_table[match(levels_all, class_table$class), ]
+  rownames(class_table) <- NULL
+  
+  list(
+    mean_macro_f1 = mean(macro_f1_by_fold),
+    sd_macro_f1   = sd(macro_f1_by_fold),
+    per_fold      = macro_f1_by_fold,
+    class_table   = class_table,
+    fold_details  = fold_results
+  )
+}
+```
+
+```{r}
+cv_results <- run_cv_national(
+   design_obj  = pnadc_rebalanced_complete,
+   formula     = formula_national,
+   cluster_var = "UPA",   # <-- replace with your actual household/PSU id column
+   k = 10
+ )
+
+cv_results$mean_macro_f1   # headline number to report/compare across the 6 models
+cv_results$sd_macro_f1     # spread across folds -- worth reporting too
+cv_results$per_fold
+cv_results$class_table     # per-category precision / recall / F1, mean +/- SD across folds
+
+knitr::kable(cv_results$class_table, digits = 3)
 ```
 
 ```{r}
