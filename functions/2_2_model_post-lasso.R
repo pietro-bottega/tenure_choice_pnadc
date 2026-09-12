@@ -13,6 +13,24 @@ source(here("functions","custom_functions.R"))
 
 # 1. POST LASSO FOR NATIONAL MODEL 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 formula_national <- create_formula(
   y = "tenure_condition",
   x = clean_select_vars_national

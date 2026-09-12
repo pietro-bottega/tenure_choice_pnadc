@@ -29,19 +29,19 @@ source(here("functions","pipeline.R"))
 
 ### Preparação
 
-Balanceamento:
+Balanceamento, conferência:
 
 ```{r}
-# Esperado: TRUE
+implied_penalty <- pnadc_rebalanced$pweights / pnadc$pweights
+identical(round(implied_penalty, 6), round(pnadc_rebalanced$variables$penalty_anchored, 6))
 
-identical(
-  round(pnadc_rebalanced$pweights, 6),
-  round(pnadc_rebalanced$variables$V1032_balanced, 6)
-)
+max(abs(pnadc_rebalanced$pweights - pnadc_rebalanced$variables$V1032_balanced))
+
+# false and 0 confirm the rebalancing was updated
 ```
 
 ```{r}
-# Esperado: FALSE
+# Expected FALSE to confirm weights have changed
 
 identical(pnadc_rebalanced$pweights, pnadc$pweights)
 ```
@@ -54,6 +54,507 @@ colnames(pnadc_matrix_national$X_matrix)
 
 ```{r}
 ncol(pnadc_matrix_national$X_matrix)
+```
+
+## Avaliação do poder preditivo
+
+### Nested CV 10-folds
+
+```{r}
+## =================================================================
+## NESTED cluster-respecting K-fold CV for the national multinomial model
+## LASSO variable selection is re-run INSIDE each training fold (not fixed
+## up front), then the multinomial model is refit on the selected variables
+## and evaluated on the held-out fold. Evaluation metric: survey-weighted
+## macro-F1.
+## =================================================================
+## COST WARNING: this is the expensive nested-CV path discussed earlier --
+## each outer fold now also runs cv.glmnet's own internal CV to pick lambda.
+## With K outer folds x inner_nfolds internal folds, expect roughly K times
+## the cost of a single cv.glmnet + vglm run, not the ~1-minute flat-CV cost.
+## Time a single fold first (see USAGE at the bottom) before running all K.
+##
+## Assumes: pnadc_rebalanced_complete (svyrep.design, pweights/repweights
+## already balanced+anchored), VGAM/survey/glmnet packages loaded, and
+## `regression_variables` (character vector of candidate predictor names,
+## as in create_matrix_national()) defined.
+
+library(VGAM)
+library(survey)
+library(glmnet)
+
+# ----------------------------------------------------------------
+# 0. Lasso-selection helpers (carried over from pipeline.txt, needed here
+#    because selection now happens inside each fold rather than once
+#    up front)
+# ----------------------------------------------------------------
+get_selected_vars <- function(coefs) {
+  selected_vars <- c()
+  for (i in seq_along(coefs)) {
+    matriz_coef <- coefs[[i]]
+    active_name <- rownames(matriz_coef)[which(matriz_coef != 0)]
+    selected_vars <- c(selected_vars, active_name)
+  }
+  final_vars <- unique(selected_vars)
+  final_vars <- final_vars[final_vars != "(Intercept)"]
+  final_vars
+}
+
+clean_lasso_names <- function(matrix, variables) {
+  clean_vector <- c()
+  for (matrix_name in matrix) {
+    for (orig_var in variables) {
+      if (startsWith(matrix_name, orig_var)) {
+        clean_vector <- c(clean_vector, orig_var)
+        break
+      }
+    }
+  }
+  unique(clean_vector)
+}
+
+create_formula <- function(y, x) {
+  if (length(x) == 0) {
+    # LASSO selected nothing in this fold -- fall back to intercept-only
+    # rather than erroring on paste(character(0)). Worth flagging if this
+    # ever triggers: it means this fold's training data couldn't support
+    # any predictor surviving regularization.
+    warning("No variables selected -- falling back to intercept-only formula.")
+    return(as.formula(paste(y, "~ 1")))
+  }
+  right_side <- paste(x, collapse = " + ")
+  as.formula(paste(y, "~", right_side))
+}
+
+# ----------------------------------------------------------------
+# 1. Cluster-respecting fold assignment (unchanged from flat-CV version)
+# ----------------------------------------------------------------
+create_cluster_folds <- function(design_obj, cluster_var, k = 10, seed = 123) {
+  set.seed(seed)
+  
+  cluster_ids <- design_obj$variables[[cluster_var]]
+  unique_clusters <- unique(cluster_ids)
+  unique_clusters <- sample(unique_clusters)
+  
+  fold_assignment <- rep(1:k, length.out = length(unique_clusters))
+  cluster_to_fold  <- setNames(fold_assignment, as.character(unique_clusters))
+  
+  row_fold <- unname(cluster_to_fold[as.character(cluster_ids)])
+  print(table(row_fold))
+  
+  return(row_fold)
+}
+
+# ----------------------------------------------------------------
+# 2. Survey-weighted precision, recall, and F1 per class (unchanged)
+# ----------------------------------------------------------------
+weighted_class_metrics <- function(y_true, y_pred, w, levels_all) {
+  y_true <- factor(y_true, levels = levels_all)
+  y_pred <- factor(y_pred, levels = levels_all)
+  
+  out <- data.frame(
+    class     = levels_all,
+    precision = NA_real_,
+    recall    = NA_real_,
+    f1        = NA_real_,
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in seq_along(levels_all)) {
+    cl <- levels_all[i]
+    tp <- sum(w[y_true == cl & y_pred == cl])
+    fp <- sum(w[y_true != cl & y_pred == cl])
+    fn <- sum(w[y_true == cl & y_pred != cl])
+    
+    precision <- if ((tp + fp) > 0) tp / (tp + fp) else 0
+    recall    <- if ((tp + fn) > 0) tp / (tp + fn) else 0
+    f1 <- if ((precision + recall) > 0) {
+      2 * precision * recall / (precision + recall)
+    } else 0
+    
+    out$precision[i] <- precision
+    out$recall[i]     <- recall
+    out$f1[i]          <- f1
+  }
+  
+  out
+}
+
+# ----------------------------------------------------------------
+# 2c. Survey-weighted confusion matrix
+#     Cells are SUMS OF WEIGHTS (i.e. population-scale, not raw row
+#     counts), consistent with the rest of this pipeline. Explicitly
+#     stripped to a plain numeric matrix -- xtabs()/table() return a
+#     "table"-classed object, and this pipeline has already been bitten
+#     once by a silently persisting "table" class corrupting downstream
+#     arithmetic (see rebalance_weights_national()).
+# ----------------------------------------------------------------
+build_weighted_confusion_matrix <- function(y_true, y_pred, w, levels_all) {
+  y_true <- factor(y_true, levels = levels_all)
+  y_pred <- factor(y_pred, levels = levels_all)
+  
+  cm <- matrix(0, nrow = length(levels_all), ncol = length(levels_all),
+               dimnames = list(true = levels_all, predicted = levels_all))
+  
+  for (i in seq_along(levels_all)) {
+    for (j in seq_along(levels_all)) {
+      cm[i, j] <- sum(w[y_true == levels_all[i] & y_pred == levels_all[j]])
+    }
+  }
+  
+  cm  # plain numeric matrix, population-weighted counts
+}
+
+# Row-normalized version: each row sums to 100, showing what share of the
+# TRUE population in each category was predicted into each category
+# (diagonal = recall, in percentage-of-population terms).
+row_normalize_confusion_matrix <- function(cm) {
+  pct <- sweep(cm, 1, rowSums(cm), FUN = "/") * 100
+  as.matrix(pct)  # defensive strip, same reasoning as above
+}
+
+
+#     Computed ONCE from the full dataset, before any splitting. This
+#     guarantees model.matrix() produces the same dummy columns in every
+#     fold (even if a level has zero rows in a given training fold) and
+#     that vglm's predict() never meets an unseen factor level in a test
+#     fold.
+# ----------------------------------------------------------------
+force_factor_levels <- function(df, vars) {
+  level_map <- list()
+  for (v in vars) {
+    if (is.character(df[[v]]) || is.factor(df[[v]])) {
+      level_map[[v]] <- levels(factor(df[[v]]))
+    }
+  }
+  level_map
+}
+
+apply_factor_levels <- function(df, level_map) {
+  for (v in names(level_map)) {
+    df[[v]] <- factor(df[[v]], levels = level_map[[v]])
+  }
+  df
+}
+
+# ----------------------------------------------------------------
+# 3. Single fold, NESTED: run LASSO selection on the training fold only,
+#    refit multinomial on the selected variables, predict on the held-out
+#    fold.
+# ----------------------------------------------------------------
+run_fold_nested <- function(fold_i, row_fold, df, regression_variables,
+                            weight_var, y_var, levels_all, seed,
+                            inner_nfolds = 10) {
+  
+  train_idx <- which(row_fold != fold_i)
+  test_idx  <- which(row_fold == fold_i)
+  
+  train_df <- df[train_idx, ]
+  test_df  <- df[test_idx, ]
+  
+  train_df$.wt <- train_df[[weight_var]]
+  test_df$.wt  <- test_df[[weight_var]]
+  
+  train_df[[y_var]] <- factor(train_df[[y_var]], levels = levels_all)
+  test_df[[y_var]]  <- factor(test_df[[y_var]],  levels = levels_all)
+  
+  # ---- Step A: LASSO variable selection, using ONLY this fold's training
+  #      data. This is what makes it "nested" -- the inner cv.glmnet call
+  #      below never sees this fold's held-out rows.
+  X_matrix <- tryCatch(
+    model.matrix(~ . - 1, data = train_df[, regression_variables, drop = FALSE]),
+    error = function(e) e
+  )
+  if (inherits(X_matrix, "error")) {
+    warning(sprintf("Fold %d: failed to build design matrix: %s",
+                    fold_i, conditionMessage(X_matrix)))
+    return(NULL)
+  }
+  
+  set.seed(seed + fold_i)  # reproducible inner CV per fold
+  lasso_fit <- tryCatch(
+    glmnet::cv.glmnet(
+      x = X_matrix,
+      y = train_df[[y_var]],
+      family  = "multinomial",
+      weights = train_df$.wt,
+      nfolds  = inner_nfolds
+    ),
+    error = function(e) e
+  )
+  if (inherits(lasso_fit, "error")) {
+    warning(sprintf("Fold %d: LASSO failed to fit: %s", fold_i, conditionMessage(lasso_fit)))
+    return(NULL)
+  }
+  
+  # lambda.1se instead of lambda.min: picks the most parsimonious model
+  # within one standard error of the minimum CV deviance, trading a
+  # small amount of fit for a sparser, more stable selection -- Friedman,
+  # Hastie & Tibshirani (2010) recommend this as the default choice when
+  # parsimony is preferred over chasing the minimum-error lambda exactly.
+  coefs <- coef(lasso_fit, s = "lambda.1se")
+  selected_raw   <- get_selected_vars(coefs)
+  selected_clean <- clean_lasso_names(selected_raw, regression_variables)
+  
+  fold_formula <- create_formula(y_var, selected_clean)
+  
+  # ---- Step B: refit multinomial on ONLY the variables selected in this
+  #      fold's training data, then predict on the held-out fold.
+  fit <- tryCatch(
+    VGAM::vglm(fold_formula, data = train_df, weights = .wt,
+               family = VGAM::multinomial(refLevel = 1)),
+    error = function(e) e
+  )
+  
+  if (inherits(fit, "error")) {
+    warning(sprintf("Fold %d: vglm refit failed to converge: %s",
+                    fold_i, conditionMessage(fit)))
+    return(NULL)
+  }
+  
+  pred_probs <- VGAM::predictvglm(fit, newdata = test_df, type = "response")
+  
+  # Same caveat as the flat-CV version: verify colnames(pred_probs) matches
+  # levels_all order on your first real run.
+  if (is.null(dim(pred_probs))) {
+    # Intercept-only / single-category edge case: predictvglm can return
+    # a vector instead of a matrix. Handle defensively rather than crash.
+    pred_class <- rep(levels_all[1], nrow(test_df))
+  } else {
+    pred_class <- levels_all[apply(pred_probs, 1, which.max)]
+  }
+  
+  class_metrics <- weighted_class_metrics(
+    y_true     = test_df[[y_var]],
+    y_pred     = pred_class,
+    w          = test_df$.wt,
+    levels_all = levels_all
+  )
+  
+  list(
+    fold           = fold_i,
+    n_train        = nrow(train_df),
+    n_test         = nrow(test_df),
+    selected_vars  = selected_clean,
+    lambda_1se     = lasso_fit$lambda.1se,
+    macro_f1       = mean(class_metrics$f1),
+    class_metrics  = class_metrics,
+    # Raw test-set predictions, kept so they can be pooled across all K
+    # folds afterward to build one full-sample confusion matrix -- every
+    # observation is a test-set member in exactly one fold, so pooling
+    # reconstructs a complete out-of-sample confusion matrix.
+    y_true         = as.character(test_df[[y_var]]),
+    y_pred         = pred_class,
+    w              = test_df$.wt
+  )
+}
+
+# ----------------------------------------------------------------
+# 4. Full nested pipeline -- national model, no macroregion split
+# ----------------------------------------------------------------
+run_nested_cv_national <- function(design_obj, regression_variables, cluster_var,
+                                   y_var = "tenure_condition",
+                                   k = 10, seed = 123, inner_nfolds = 10) {
+  
+  df <- design_obj$variables
+  weight_var <- ".sampling_weight"
+  df[[weight_var]] <- as.vector(weights(design_obj, "sampling"))  # strip any "table" class
+  
+  levels_all <- levels(factor(df[[y_var]]))
+  
+  # Force consistent factor levels on all candidate predictors up front,
+  # from the FULL dataset -- see note on force_factor_levels() above.
+  level_map <- force_factor_levels(df, regression_variables)
+  df <- apply_factor_levels(df, level_map)
+  
+  row_fold <- create_cluster_folds(design_obj, cluster_var, k = k, seed = seed)
+  
+  fold_results <- vector("list", k)
+  for (i in seq_len(k)) {
+    message(sprintf("Running NESTED fold %d/%d (LASSO + refit)...", i, k))
+    fold_results[[i]] <- run_fold_nested(
+      fold_i = i, row_fold = row_fold, df = df,
+      regression_variables = regression_variables,
+      weight_var = weight_var, y_var = y_var, levels_all = levels_all,
+      seed = seed, inner_nfolds = inner_nfolds
+    )
+  }
+  
+  fold_results <- Filter(Negate(is.null), fold_results)
+  if (length(fold_results) < k) {
+    warning(sprintf("%d of %d folds failed and were dropped -- see warnings above.",
+                    k - length(fold_results), k))
+  }
+  if (length(fold_results) == 0) {
+    stop("All folds failed -- see warnings above for the underlying error(s).")
+  }
+  
+  macro_f1_by_fold <- sapply(fold_results, function(x) x$macro_f1)
+  
+  # ---- Per-category precision/recall/F1 table, as in the flat-CV version
+  all_class_metrics <- do.call(rbind, lapply(fold_results, function(x) {
+    cbind(fold = x$fold, x$class_metrics)
+  }))
+  class_table <- aggregate(cbind(precision, recall, f1) ~ class,
+                           data = all_class_metrics, FUN = mean)
+  class_table_sd <- aggregate(cbind(precision, recall, f1) ~ class,
+                              data = all_class_metrics, FUN = sd)
+  names(class_table_sd)[-1] <- paste0(names(class_table_sd)[-1], "_sd")
+  class_table <- merge(class_table, class_table_sd, by = "class")
+  class_table <- class_table[match(levels_all, class_table$class), ]
+  rownames(class_table) <- NULL
+  
+  # ---- Variable-selection stability across folds: this is the natural
+  #      byproduct of nesting the selection step, and worth reporting --
+  #      it shows how sensitive the LASSO selection was to which 90% of
+  #      the data it saw.
+  all_selected <- unlist(lapply(fold_results, function(x) x$selected_vars))
+  selection_freq <- as.data.frame(table(all_selected))
+  names(selection_freq) <- c("variable", "times_selected")
+  selection_freq$out_of_k <- length(fold_results)
+  selection_freq <- selection_freq[order(-selection_freq$times_selected), ]
+  rownames(selection_freq) <- NULL
+  
+  # ---- Pooled out-of-sample confusion matrix, built from EVERY fold's
+  #      held-out predictions concatenated together -- i.e. covers the
+  #      full sample, entirely out-of-sample, with no observation counted
+  #      more than once. Only valid if no folds were dropped above; if
+  #      some failed, this covers only the successful folds' rows.
+  pooled_y_true <- unlist(lapply(fold_results, function(x) x$y_true))
+  pooled_y_pred <- unlist(lapply(fold_results, function(x) x$y_pred))
+  pooled_w      <- unlist(lapply(fold_results, function(x) x$w))
+  
+  confusion_matrix     <- build_weighted_confusion_matrix(
+    pooled_y_true, pooled_y_pred, pooled_w, levels_all
+  )
+  confusion_matrix_pct <- row_normalize_confusion_matrix(confusion_matrix)
+  
+  list(
+    mean_macro_f1        = mean(macro_f1_by_fold),
+    sd_macro_f1          = sd(macro_f1_by_fold),
+    per_fold             = macro_f1_by_fold,
+    class_table          = class_table,
+    selection_freq       = selection_freq,
+    confusion_matrix     = confusion_matrix,      # population-weighted counts
+    confusion_matrix_pct = confusion_matrix_pct,  # row-normalized, % of true population
+    fold_details         = fold_results
+  )
+}
+```
+
+```{r}
+# Time ONE fold first, given the cost warning at the top of this file:
+
+regression_variables <- c("age", "race", "household_size", "family_structure", "household_income", "household_income_pcapita", "education_years", "wealth_index", "head_dependency", "worker_status", "single_mom", "metropolitan_area", "macroregion")
+
+row_fold_test <- create_cluster_folds(pnadc_rebalanced_complete, "UPA", k = 10)
+df_test <- pnadc_rebalanced_complete$variables
+df_test$.sampling_weight <- as.vector(weights(pnadc_rebalanced_complete, "sampling"))
+system.time(
+   run_fold_nested(1, row_fold_test, df_test, regression_variables,
+                   ".sampling_weight", "tenure_condition",
+                   levels(factor(df_test$tenure_condition)), seed = 123)
+ )
+# Multiply by 10 (folds) for a rough total-time estimate before committing.
+```
+
+```{r}
+nested_cv_results <- run_nested_cv_national(
+   design_obj            = pnadc_rebalanced_complete,
+   regression_variables  = regression_variables,   # same vector used in create_matrix_national()
+   cluster_var           = "UPA",
+   k = 10,
+   inner_nfolds = 10   # lower this (e.g. 5) to cut cost if needed
+ )
+```
+
+```{r}
+nested_cv_results$mean_macro_f1
+nested_cv_results$sd_macro_f1
+nested_cv_results$class_table
+nested_cv_results$selection_freq   # e.g. "education_years selected in 10/10 folds"
+nested_cv_results$confusion_matrix       # population-weighted counts (true rows x predicted cols)
+nested_cv_results$confusion_matrix_pct   # row-normalized to 100 -- % of each true category's, population predicted into each category
+
+knitr::kable(nested_cv_results$confusion_matrix_pct, digits = 1)
+```
+
+```{r}
+## =================================================================
+## Heatmap-style confusion matrix -- both raw population counts and
+## row-normalized percentages, sized larger so long category labels
+## (e.g. "proprietario_formal") and multi-digit numbers don't overlap.
+## =================================================================
+## build_weighted_confusion_matrix() returns a PLAIN matrix (deliberately
+## stripped of "table" class -- see its own comments for why), so
+## as.data.frame() on it does NOT give a long-format Observed/Predicted/
+## Freq frame directly. Built explicitly below instead.
+
+library(ggplot2)
+library(scales)
+
+# ----------------------------------------------------------------
+# Reusable plotting function -- takes either confusion_matrix (raw
+# counts) or confusion_matrix_pct (row-normalized), toggled by is_percent.
+# ----------------------------------------------------------------
+plot_confusion_matrix <- function(cm, is_percent = FALSE, title = NULL) {
+  
+  cm_df <- data.frame(
+    # as.vector(cm) unrolls column-by-column (R is column-major), so
+    # Observed must cycle through rownames fastest (times = ncol) and
+    # Predicted must repeat each colname consecutively (each = nrow).
+    Observed  = factor(rep(rownames(cm), times = ncol(cm)), levels = rownames(cm)),
+    Predicted = factor(rep(colnames(cm), each  = nrow(cm)), levels = colnames(cm)),
+    Freq      = as.vector(cm)
+  )
+  
+  if (is_percent) {
+    cm_df$label <- paste0(format(round(cm_df$Freq, 1), decimal.mark = ",", nsmall = 1), "%")
+    fill_scale <- scale_fill_distiller(palette = "Blues", direction = 1,
+                                       labels = label_number(suffix = "%"))
+  } else {
+    cm_df$label <- format(round(cm_df$Freq, 0), big.mark = ".")
+    fill_scale <- scale_fill_distiller(palette = "Blues", direction = 1,
+                                       labels = label_number(scale = 1e-6, suffix = "M"))
+  }
+  
+  ggplot(cm_df, aes(x = Predicted, y = Observed, fill = Freq)) +
+    geom_tile(color = "white") +
+    geom_text(
+      aes(label = label, color = Freq > (max(Freq) / 2)),
+      size = 6.5   # bigger text so multi-digit numbers fit and read clearly
+    ) +
+    scale_color_manual(values = c("TRUE" = "white", "FALSE" = "black"), guide = "none") +
+    fill_scale +
+    # Reverse row order so the first row of the matrix plots at the TOP.
+    scale_y_discrete(limits = rev(rownames(cm))) +
+    labs(x = "Categoria prevista", y = "Categoria observada", fill = "", title = title) +
+    theme_minimal(base_size = 24) +   # bigger base size -> bigger axis text/titles
+    theme(
+      panel.grid   = element_blank(),
+      axis.text    = element_text(size = 13, color = "black"),
+      axis.title   = element_text(size = 14, face = "plain"),
+      plot.title   = element_text(size = 15, hjust = 0.5),
+      legend.position = "right",
+      # Extra margin so long category names (e.g. "proprietario_formal")
+      # never get clipped against the plot edge.
+      plot.margin  = margin(t = 15, r = 15, b = 15, l = 15)
+    )
+}
+
+# ----------------------------------------------------------------
+# Build both versions
+# ----------------------------------------------------------------
+p_counts  <- plot_confusion_matrix(nested_cv_results$confusion_matrix,
+                                   is_percent = FALSE,
+                                   title = "Matriz de confusão -- população total")
+
+p_percent <- plot_confusion_matrix(nested_cv_results$confusion_matrix_pct,
+                                   is_percent = TRUE,
+                                   title = "Matriz de confusão -- % da categoria observada")
+
+ggsave("../outputs/confusion_matrix_counts.png",  p_counts,  width = 10, height = 8, dpi = 300, bg = "white")
+ggsave("../outputs/confusion_matrix_percent.png", p_percent, width = 10, height = 8, dpi = 300, bg = "white")
 ```
 
 ## LASSO
