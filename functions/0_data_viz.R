@@ -376,7 +376,71 @@ generate_macroregion_tenure_table_sample <- function(design_obj) {
   return(gt_table)
 }
 
-# 2. MODELLING ----------------------------------
+# 2. MODELLING -------------------------------------------------------------------------------------------
+
+## 2.1. PREDICTION -------------------------------------------------------------------------------------------
+
+## =================================================================
+## Heatmap-style confusion matrix 
+## =================================================================
+## build_weighted_confusion_matrix() returns a PLAIN matrix (deliberately
+## stripped of "table" class -- see its own comments for why), so
+## as.data.frame() on it does NOT give a long-format Observed/Predicted/
+## Freq frame directly. Built explicitly below instead.
+
+library(ggplot2)
+library(scales)
+
+# ----------------------------------------------------------------
+# Reusable plotting function -- takes either confusion_matrix (raw
+# counts) or confusion_matrix_pct (row-normalized), toggled by is_percent.
+# ----------------------------------------------------------------
+plot_confusion_matrix <- function(cm, is_percent = FALSE, title = NULL) {
+  
+  cm_df <- data.frame(
+    # as.vector(cm) unrolls column-by-column (R is column-major), so
+    # Observed must cycle through rownames fastest (times = ncol) and
+    # Predicted must repeat each colname consecutively (each = nrow).
+    Observed  = factor(rep(rownames(cm), times = ncol(cm)), levels = rownames(cm)),
+    Predicted = factor(rep(colnames(cm), each  = nrow(cm)), levels = colnames(cm)),
+    Freq      = as.vector(cm)
+  )
+  
+  if (is_percent) {
+    cm_df$label <- paste0(format(round(cm_df$Freq, 1), decimal.mark = ",", nsmall = 1), "%")
+    fill_scale <- scale_fill_distiller(palette = "Blues", direction = 1,
+                                       labels = label_number(suffix = "%"))
+  } else {
+    cm_df$label <- format(round(cm_df$Freq, 0), big.mark = ".")
+    fill_scale <- scale_fill_distiller(palette = "Blues", direction = 1,
+                                       labels = label_number(scale = 1e-6, suffix = "M"))
+  }
+  
+  ggplot(cm_df, aes(x = Predicted, y = Observed, fill = Freq)) +
+    geom_tile(color = "white") +
+    geom_text(
+      aes(label = label, color = Freq > (max(Freq) / 2)),
+      size = 6.5   # bigger text so multi-digit numbers fit and read clearly
+    ) +
+    scale_color_manual(values = c("TRUE" = "white", "FALSE" = "black"), guide = "none") +
+    fill_scale +
+    # Reverse row order so the first row of the matrix plots at the TOP.
+    scale_y_discrete(limits = rev(rownames(cm))) +
+    labs(x = "Categoria prevista", y = "Categoria observada", fill = "", title = title) +
+    theme_minimal(base_size = 24) +   # bigger base size -> bigger axis text/titles
+    theme(
+      panel.grid   = element_blank(),
+      axis.text    = element_text(size = 13, color = "black"),
+      axis.title   = element_text(size = 14, face = "plain"),
+      plot.title   = element_text(size = 15, hjust = 0.5),
+      legend.position = "right",
+      # Extra margin so long category names (e.g. "proprietario_formal")
+      # never get clipped against the plot edge.
+      plot.margin  = margin(t = 15, r = 15, b = 15, l = 15)
+    )
+}
+
+## 2.2. INTERPRETATION -------------------------------------------------------------------------------------------
 
 create_selection_table <- function(all_variables, selected_lists) {
   
@@ -400,3 +464,4 @@ create_selection_table <- function(all_variables, selected_lists) {
   
   return(result_table)
 }
+

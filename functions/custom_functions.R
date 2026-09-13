@@ -1,4 +1,4 @@
-# 1. DATA IMPORTATION AND TREATMENT ---------------------------------------------
+# 1. DATA IMPORTATION AND TREATMENT  -------------------------------------------------------------------------------------
 
 get_filtered_pnadc <- function(target_year, target_interview, target_vars) {
   # 1. Download data
@@ -380,58 +380,400 @@ remove_missing <- function(design_obj) {
   return(design_valid)
 }
 
-# 2. MODELLING ---------------------------------------------
+# 2. MODELLING -------------------------------------------------------------------------------------
 
-## 2.1. LASSO ----------------------------------------------
-
-rebalance_weights_national <- function(design_obj) {
+get_selected_vars <- function(coefs) {
+  selected_vars <- c()
   
-  # 1. Calculate natural proportion using the real distribution
-  frequency  <- table(design_obj$variables$tenure_condition)
+  for (i in 1:length(coefs)) {
+    matriz_coef <- coefs[[i]]
+    # get lines with non zero coefs
+    active_name <- rownames(matriz_coef)[which(matriz_coef != 0)]
+    selected_vars <- c(selected_vars, active_name)
+  }
+  
+  final_vars <- unique(selected_vars)
+  final_vars <- final_vars[final_vars != "(Intercept)"]
+  
+  return(final_vars)
+}
+
+clean_lasso_names <- function(matrix, variables) {
+  
+  # Create an empty vector
+  clean_vector <- c()
+  
+  # Iterate over variables in the matrix, one hot encoded
+  for (matrix_name in matrix) {
+    
+    # Iterate over the list of original variables
+    for (orig_var in variables) {
+      
+      # If the matrix name starts exactly with the original variable name
+      if (startsWith(matrix_name, orig_var)) {
+        clean_vector <- c(clean_vector, orig_var)
+        break # Exit the inner loop 
+      }
+    }
+  }
+  
+  # Get unique from multiple categories
+  clean_vector <- unique(clean_vector)
+  
+  return(clean_vector)
+}
+
+create_formula <- function(y, x) {
+  right_side <- paste(x, collapse = " + ")
+  equation <- paste(y, "~", right_side)
+  formula <- as.formula(equation)
+  return(formula)
+}
+
+
+## 2.1. PREDICTION  -------------------------------------------------------------------------------------
+
+## =================================================================
+## NESTED cluster-respecting K-fold CV for the national multinomial model
+## =================================================================
+
+# ----------------------------------------------------------------
+# 1. Cluster-respecting fold assignment
+# ----------------------------------------------------------------
+create_cluster_folds <- function(design_obj, cluster_var, k = 10, seed = 123) {
+  set.seed(seed)
+  
+  cluster_ids <- design_obj$variables[[cluster_var]]
+  unique_clusters <- unique(cluster_ids)
+  unique_clusters <- sample(unique_clusters)
+  
+  fold_assignment <- rep(1:k, length.out = length(unique_clusters))
+  cluster_to_fold  <- setNames(fold_assignment, as.character(unique_clusters))
+  
+  row_fold <- unname(cluster_to_fold[as.character(cluster_ids)])
+  print(table(row_fold))
+  
+  return(row_fold)
+}
+
+# ----------------------------------------------------------------
+# 1b. train-only class rebalancing
+# ----------------------------------------------------------------
+compute_train_class_weights <- function(y_train, base_weight_train) {
+  # 1. Natural class proportions, using ONLY this fold's training rows
+  frequency  <- table(y_train)
   proportion <- prop.table(frequency)
   
-  # 2. Create inverted weight and normalize most common class
+  # 2. Inverse-frequency multiplier, anchored to the least-penalized
+  #    (i.e. most common) class = 1x
   inverted_weight <- 1 / proportion
   weight_penalty  <- inverted_weight / min(inverted_weight)
   
-  message("Class multiplier based on penalty:")
-  print(round(weight_penalty, 2))
+  # 3. Map each training row to its class's multiplier
+  penalties <- as.vector(weight_penalty[as.character(y_train)])
+  penalties[is.na(penalties)] <- 1  # fallback safeguard
   
-  # 3. Compute penalties safely to avoid scoping/evaluation bugs
-  penalties <- as.vector(weight_penalty[as.character(design_obj$variables$tenure_condition)])
-  penalties[is.na(penalties)] <- 1  # Fallback for any missing values
-  
-  # 4. Capture population size BEFORE any weight change
-  pop_before <- sum(weights(design_obj, "sampling"))
-  
-  # 5. Anchor: rescale penalties so the total population is preserved
-  #    (raw penalties would inflate the total, since majority class = 1x
-  #    and every other class is >1x)
-  raw_total     <- sum(design_obj$variables$V1032 * penalties)
-  scale_factor  <- pop_before / raw_total
+  # 4. Anchor so the total TRAINING weight is preserved
+  raw_total    <- sum(base_weight_train * penalties)
+  pop_before   <- sum(base_weight_train)
+  scale_factor <- pop_before / raw_total
   penalties_adj <- penalties * scale_factor
   
-  # 6. Keep raw penalty for reporting/documentation purposes (methods section),
-  #    but use the anchored version for the actual weights used in estimation
-  design_obj$variables$penalty        <- penalties       # raw multiplier, for reporting
-  design_obj$variables$penalty_anchored <- penalties_adj # what's actually applied
-  design_obj$variables$V1032_balanced <- design_obj$variables$V1032 * penalties_adj
+  list(
+    multiplier_raw     = weight_penalty,   # named vector, per class -- for reporting
+    multiplier_applied = penalties_adj      # per-row, anchored -- what's actually used
+  )
+}
+
+# ----------------------------------------------------------------
+# 2. Survey-weighted precision, recall, and F1 per class
+# ----------------------------------------------------------------
+weighted_class_metrics <- function(y_true, y_pred, w, levels_all) {
+  y_true <- factor(y_true, levels = levels_all)
+  y_pred <- factor(y_pred, levels = levels_all)
   
-  # 7. Update the actual weight slots the survey package uses for estimation
-  design_obj$pweights <- design_obj$pweights * penalties_adj
-  if (!is.null(design_obj$repweights)) {
-    design_obj$repweights <- design_obj$repweights * penalties_adj  # recycles down columns
+  out <- data.frame(
+    class     = levels_all,
+    precision = NA_real_,
+    recall    = NA_real_,
+    f1        = NA_real_,
+    stringsAsFactors = FALSE
+  )
+  
+  for (i in seq_along(levels_all)) {
+    cl <- levels_all[i]
+    tp <- sum(w[y_true == cl & y_pred == cl])
+    fp <- sum(w[y_true != cl & y_pred == cl])
+    fn <- sum(w[y_true == cl & y_pred != cl])
+    
+    precision <- if ((tp + fp) > 0) tp / (tp + fp) else 0
+    recall    <- if ((tp + fn) > 0) tp / (tp + fn) else 0
+    f1 <- if ((precision + recall) > 0) {
+      2 * precision * recall / (precision + recall)
+    } else 0
+    
+    out$precision[i] <- precision
+    out$recall[i]     <- recall
+    out$f1[i]          <- f1
   }
   
-  # 8. Confirm population size is unchanged after anchoring
-  pop_after  <- sum(weights(design_obj, "sampling"))
-  message(sprintf(
-    "Population size: %.0f -> %.0f  (Δ %.4f%%, should be ~0 after anchoring)",
-    pop_before, pop_after, 100 * (pop_after / pop_before - 1)
-  ))
-  
-  return(design_obj)
+  out
 }
+
+# ----------------------------------------------------------------
+# 2b. Survey-weighted confusion matrix
+# ----------------------------------------------------------------
+build_weighted_confusion_matrix <- function(y_true, y_pred, w, levels_all) {
+  y_true <- factor(y_true, levels = levels_all)
+  y_pred <- factor(y_pred, levels = levels_all)
+  
+  cm <- matrix(0, nrow = length(levels_all), ncol = length(levels_all),
+               dimnames = list(true = levels_all, predicted = levels_all))
+  
+  for (i in seq_along(levels_all)) {
+    for (j in seq_along(levels_all)) {
+      cm[i, j] <- sum(w[y_true == levels_all[i] & y_pred == levels_all[j]])
+    }
+  }
+  
+  cm  # plain numeric matrix, population-weighted counts (built from ORIGINAL weights)
+}
+
+row_normalize_confusion_matrix <- function(cm) {
+  pct <- sweep(cm, 1, rowSums(cm), FUN = "/") * 100
+  as.matrix(pct)
+}
+
+# ----------------------------------------------------------------
+# 2c. Consistent factor levels across folds
+# ----------------------------------------------------------------
+force_factor_levels <- function(df, vars) {
+  level_map <- list()
+  for (v in vars) {
+    if (is.character(df[[v]]) || is.factor(df[[v]])) {
+      level_map[[v]] <- levels(factor(df[[v]]))
+    }
+  }
+  level_map
+}
+
+apply_factor_levels <- function(df, level_map) {
+  for (v in names(level_map)) {
+    df[[v]] <- factor(df[[v]], levels = level_map[[v]])
+  }
+  df
+}
+
+# ----------------------------------------------------------------
+# 3. Single fold, NESTED + TRAIN-ONLY CLASS REBALANCING
+# ----------------------------------------------------------------
+run_fold_nested <- function(fold_i, row_fold, df, regression_variables,
+                            weight_var, y_var, levels_all, seed,
+                            inner_nfolds = 10) {
+  
+  train_idx <- which(row_fold != fold_i)
+  test_idx  <- which(row_fold == fold_i)
+  
+  train_df <- df[train_idx, ]
+  test_df  <- df[test_idx, ]
+  
+  # .wt = ORIGINAL survey weight for BOTH partitions.
+  train_df$.wt <- train_df[[weight_var]]
+  test_df$.wt  <- test_df[[weight_var]]
+  
+  train_df[[y_var]] <- factor(train_df[[y_var]], levels = levels_all)
+  test_df[[y_var]]  <- factor(test_df[[y_var]],  levels = levels_all)
+  
+  # ---- class multiplier computed from TRAIN_DF ONLY.
+  #      test_df is never touched by this -- it keeps .wt as the plain
+  #      original survey weight, used later only for evaluation.
+  class_w <- compute_train_class_weights(
+    y_train           = train_df[[y_var]],
+    base_weight_train = train_df$.wt
+  )
+  train_df$.wt_train <- train_df$.wt * class_w$multiplier_applied
+  
+  # ---- Step A: LASSO variable selection, using ONLY this fold's
+  #      training data, weighted by the CLASS-ADJUSTED training weight
+  #      (.wt_train), not the plain survey weight.
+  X_matrix <- tryCatch(
+    model.matrix(~ . - 1, data = train_df[, regression_variables, drop = FALSE]),
+    error = function(e) e
+  )
+  if (inherits(X_matrix, "error")) {
+    warning(sprintf("Fold %d: failed to build design matrix: %s",
+                    fold_i, conditionMessage(X_matrix)))
+    return(NULL)
+  }
+  
+  set.seed(seed + fold_i)  # reproducible inner CV per fold
+  lasso_fit <- tryCatch(
+    glmnet::cv.glmnet(
+      x = X_matrix,
+      y = train_df[[y_var]],
+      family  = "multinomial",
+      weights = train_df$.wt_train,   # <-- class-adjusted, TRAIN ONLY
+      nfolds  = inner_nfolds
+    ),
+    error = function(e) e
+  )
+  if (inherits(lasso_fit, "error")) {
+    warning(sprintf("Fold %d: LASSO failed to fit: %s", fold_i, conditionMessage(lasso_fit)))
+    return(NULL)
+  }
+  
+  # lambda.1se: most parsimonious model within one SE of minimum CV
+  coefs <- coef(lasso_fit, s = "lambda.1se")
+  selected_raw   <- get_selected_vars(coefs)
+  selected_clean <- clean_lasso_names(selected_raw, regression_variables)
+  
+  fold_formula <- create_formula(y_var, selected_clean)
+  
+  # ---- Step B: refit multinomial on the selected variables, still
+  #      using the CLASS-ADJUSTED training weight -- this is the model
+  #      that actually gets to "see" the rebalanced classes while
+  #      learning coefficients.
+  fit <- tryCatch(
+    VGAM::vglm(fold_formula, data = train_df, weights = .wt_train,
+               family = VGAM::multinomial(refLevel = 1)),
+    error = function(e) e
+  )
+  
+  if (inherits(fit, "error")) {
+    warning(sprintf("Fold %d: vglm refit failed to converge: %s",
+                    fold_i, conditionMessage(fit)))
+    return(NULL)
+  }
+  
+  pred_probs <- VGAM::predictvglm(fit, newdata = test_df, type = "response")
+  
+  if (is.null(dim(pred_probs))) {
+    pred_class <- rep(levels_all[1], nrow(test_df))
+  } else {
+    pred_class <- levels_all[apply(pred_probs, 1, which.max)]
+  }
+  
+  # ---- Evaluation uses test_df$.wt -- the ORIGINAL, UNADJUSTED survey
+  #      weight. Reported Macro-F1 / confusion matrices therefore still
+  #      represent the true population, even though training used a
+  #      class-adjusted weight.
+  class_metrics <- weighted_class_metrics(
+    y_true     = test_df[[y_var]],
+    y_pred     = pred_class,
+    w          = test_df$.wt,
+    levels_all = levels_all
+  )
+  
+  list(
+    fold                = fold_i,
+    n_train             = nrow(train_df),
+    n_test              = nrow(test_df),
+    selected_vars       = selected_clean,
+    lambda_1se          = lasso_fit$lambda.1se,
+    class_multiplier    = class_w$multiplier_raw,  # per-class multiplier used THIS fold
+    macro_f1            = mean(class_metrics$f1),
+    class_metrics       = class_metrics,
+    y_true              = as.character(test_df[[y_var]]),
+    y_pred              = pred_class,
+    w                   = test_df$.wt  # original weights, for pooled confusion matrix
+  )
+}
+
+# ----------------------------------------------------------------
+# 4. Full nested pipeline -- national model, no macroregion split
+# ----------------------------------------------------------------
+run_nested_cv <- function(design_obj, regression_variables, cluster_var,
+                                   y_var = "tenure_condition",
+                                   k = 10, seed = 123, inner_nfolds = 10, levels_all_override = NULL) {
+  
+  df <- design_obj$variables
+  weight_var <- ".sampling_weight"
+  df[[weight_var]] <- as.vector(weights(design_obj, "sampling"))  # ORIGINAL weights
+  
+  levels_all <- if (!is.null(levels_all_override)) {
+    levels_all_override
+  } else {
+    levels(factor(df[[y_var]]))
+  }
+  
+  level_map <- force_factor_levels(df, regression_variables)
+  df <- apply_factor_levels(df, level_map)
+  
+  row_fold <- create_cluster_folds(design_obj, cluster_var, k = k, seed = seed)
+  
+  fold_results <- vector("list", k)
+  for (i in seq_len(k)) {
+    message(sprintf("Running NESTED fold %d/%d (train-only class reweight + LASSO + refit)...", i, k))
+    fold_results[[i]] <- run_fold_nested(
+      fold_i = i, row_fold = row_fold, df = df,
+      regression_variables = regression_variables,
+      weight_var = weight_var, y_var = y_var, levels_all = levels_all,
+      seed = seed, inner_nfolds = inner_nfolds
+    )
+  }
+  
+  fold_results <- Filter(Negate(is.null), fold_results)
+  if (length(fold_results) < k) {
+    warning(sprintf("%d of %d folds failed and were dropped -- see warnings above.",
+                    k - length(fold_results), k))
+  }
+  if (length(fold_results) == 0) {
+    stop("All folds failed -- see warnings above for the underlying error(s).")
+  }
+  
+  macro_f1_by_fold <- sapply(fold_results, function(x) x$macro_f1)
+  
+  all_class_metrics <- do.call(rbind, lapply(fold_results, function(x) {
+    cbind(fold = x$fold, x$class_metrics)
+  }))
+  class_table <- aggregate(cbind(precision, recall, f1) ~ class,
+                           data = all_class_metrics, FUN = mean)
+  class_table_sd <- aggregate(cbind(precision, recall, f1) ~ class,
+                              data = all_class_metrics, FUN = sd)
+  names(class_table_sd)[-1] <- paste0(names(class_table_sd)[-1], "_sd")
+  class_table <- merge(class_table, class_table_sd, by = "class")
+  class_table <- class_table[match(levels_all, class_table$class), ]
+  rownames(class_table) <- NULL
+  
+  all_selected <- unlist(lapply(fold_results, function(x) x$selected_vars))
+  selection_freq <- as.data.frame(table(all_selected))
+  names(selection_freq) <- c("variable", "times_selected")
+  selection_freq$out_of_k <- length(fold_results)
+  selection_freq <- selection_freq[order(-selection_freq$times_selected), ]
+  rownames(selection_freq) <- NULL
+  
+  # ---- per-fold class multipliers, so the write-up can report how
+  #      much the class rebalancing varied depending on which 90% of the
+  #      sample was used to compute it (transparency check, same spirit
+  #      as selection_freq above).
+  class_multiplier_table <- do.call(rbind, lapply(fold_results, function(x) {
+    data.frame(fold = x$fold, class = names(x$class_multiplier),
+               multiplier = as.vector(x$class_multiplier))
+  }))
+  
+  pooled_y_true <- unlist(lapply(fold_results, function(x) x$y_true))
+  pooled_y_pred <- unlist(lapply(fold_results, function(x) x$y_pred))
+  pooled_w      <- unlist(lapply(fold_results, function(x) x$w))  # original weights
+  
+  confusion_matrix     <- build_weighted_confusion_matrix(
+    pooled_y_true, pooled_y_pred, pooled_w, levels_all
+  )
+  confusion_matrix_pct <- row_normalize_confusion_matrix(confusion_matrix)
+  
+  list(
+    mean_macro_f1           = mean(macro_f1_by_fold),
+    sd_macro_f1             = sd(macro_f1_by_fold),
+    per_fold                = macro_f1_by_fold,
+    class_table             = class_table,
+    selection_freq          = selection_freq,
+    class_multiplier_table  = class_multiplier_table,
+    confusion_matrix        = confusion_matrix,      # built from ORIGINAL weights
+    confusion_matrix_pct    = confusion_matrix_pct,  # row-normalized, % of true population
+    fold_details            = fold_results
+  )
+}
+
+## 2.2. INTERPRETATION -------------------------------------------------------------------------------------
 
 create_matrix_national <- function(design_obj) {
   
@@ -467,22 +809,6 @@ run_lasso_national <- function(matrix_national) {
                      weights = matrix_national$weights)
   
   return(lasso)
-}
-
-get_selected_vars <- function(coefs) {
-  selected_vars <- c()
-  
-  for (i in 1:length(coefs)) {
-    matriz_coef <- coefs[[i]]
-    # get lines with non zero coefs
-    active_name <- rownames(matriz_coef)[which(matriz_coef != 0)]
-    selected_vars <- c(selected_vars, active_name)
-  }
-  
-  final_vars <- unique(selected_vars)
-  final_vars <- final_vars[final_vars != "(Intercept)"]
-  
-  return(final_vars)
 }
 
 create_matrix_regional <- function(subset_df) {
@@ -551,38 +877,4 @@ run_regional_lasso <- function(survey_object) {
   
   cat("All regional LASSO models adjusted successfully!\n")
   return(lasso_models)
-}
-
-## 2.2. POST- LASSO -----------------------------------------
-
-clean_lasso_names <- function(matrix, variables) {
-  
-  # Create an empty vector
-  clean_vector <- c()
-  
-  # Iterate over variables in the matrix, one hot encoded
-  for (matrix_name in matrix) {
-    
-    # Iterate over the list of original variables
-    for (orig_var in variables) {
-      
-      # If the matrix name starts exactly with the original variable name
-      if (startsWith(matrix_name, orig_var)) {
-        clean_vector <- c(clean_vector, orig_var)
-        break # Exit the inner loop 
-      }
-    }
-  }
-  
-  # Get unique from multiple categories
-  clean_vector <- unique(clean_vector)
-  
-  return(clean_vector)
-}
-
-create_formula <- function(y, x) {
-  right_side <- paste(x, collapse = " + ")
-  equation <- paste(y, "~", right_side)
-  formula <- as.formula(equation)
-  return(formula)
 }
