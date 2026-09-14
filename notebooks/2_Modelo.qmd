@@ -25,6 +25,7 @@ source(here("functions","0_data_viz.R"))
 
 ```{r}
 source(here("functions","pipeline.R"))
+
 ```
 
 ## Predição
@@ -49,8 +50,8 @@ p_percent <- plot_confusion_matrix(nested_cv_results_national$confusion_matrix_p
                                    is_percent = TRUE,
                                    title = "Matriz de confusão -- % da categoria observada")
 
-ggsave("../outputs/confusion_matrix_counts.png",  p_counts,  width = 10, height = 8, dpi = 300, bg = "white")
-ggsave("../outputs/confusion_matrix_percent.png", p_percent, width = 10, height = 8, dpi = 300, bg = "white")
+ggsave("../outputs/confusion_matrix_national_counts.png",  p_counts,  width = 10, height = 8, dpi = 300, bg = "white")
+ggsave("../outputs/confusion_matrix_national_percent.png", p_percent, width = 10, height = 8, dpi = 300, bg = "white")
 ```
 
 ### Regionais
@@ -104,9 +105,6 @@ plot(lasso_national)
 #### Modelos regionais
 
 ```{r}
-```
-
-```{r}
 print(select_vars_norte)
 print(length(select_vars_norte))
 ```
@@ -132,16 +130,10 @@ print(length(select_vars_sul))
 ```
 
 ```{r}
-# 1. Define the vector with ALL model variables (the row headers)
-all_vars <- c(
-  "age", "race1", "race2", "race3", "race4", "race5", "race9", 
-  "household_size", "family_structureunipessoal", "household_income", 
-  "household_income_pcapita", "education_years", "wealth_index", 
-  "head_dependency", "worker_statusinformal", "worker_statusnao_informado", 
-  "worker_statusservidor_publico", "worker_statustrabalhador_formal", 
-  "single_momnao_mae_solteira", "metropolitan_areanao_area_metropolitana", 
-  "macroregionnordeste", "macroregionnorte", "macroregionsudeste", "macroregionsul"
-)
+
+national_df <- pnadc$variables[, regression_variables, drop = FALSE]
+national_X  <- model.matrix(~ . - 1, data = national_df)
+all_vars    <- colnames(national_X)
 
 # 2. Group your results into a named list.
 # Replace the placeholder variables below with your actual LASSO-generated vectors.
@@ -159,6 +151,28 @@ final_table <- create_selection_table(all_vars, results_list)
 
 # View the result
 View(final_table)
+```
+
+```{r}
+categorical_vars <- regression_variables[
+  sapply(national_df, function(x) is.character(x) || is.factor(x))
+]
+first_var <- regression_variables[1]
+
+reference_levels <- sapply(categorical_vars, function(v) {
+  lv <- levels(factor(national_df[[v]]))
+  present_dummies <- all_vars[startsWith(all_vars, v)]
+  present_levels  <- sub(paste0("^", v), "", present_dummies)
+  dropped <- setdiff(lv, present_levels)
+  
+  if (v == first_var) {
+    "none -- fully dummy-encoded (first variable, -1 formula)"
+  } else {
+    dropped
+  }
+})
+
+reference_levels
 ```
 
 ### Post-LASSO

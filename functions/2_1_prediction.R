@@ -49,10 +49,15 @@ nested_cv_results_national <- run_nested_cv(
 
 # Regional
 
+regional_results <- list()
+
 for (reg in regions) {
   message(sprintf("=== Running region: %s ===", reg))
   
   region_design <- subset(pnadc, macroregion == reg)
+  
+  rare_rows <- which(region_design$variables$race == "9")
+  force_ids_reg <- unique(region_design$variables[["UPA"]][rare_rows])
   
   regional_results[[reg]] <- run_nested_cv(
     design_obj           = region_design,
@@ -60,6 +65,7 @@ for (reg in regions) {
     cluster_var          = "UPA",
     y_var                = "tenure_condition",
     levels_all_override  = levels_all_national,
+    force_train_ids = force_ids_reg,
     k    = 10,
     seed = 123
   )

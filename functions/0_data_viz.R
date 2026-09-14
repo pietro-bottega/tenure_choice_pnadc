@@ -397,6 +397,11 @@ library(scales)
 # ----------------------------------------------------------------
 plot_confusion_matrix <- function(cm, is_percent = FALSE, title = NULL) {
   
+  classes <- c("Proprietário formal", "Morador informal", "Inquilino formal")
+  
+  rownames(cm) <- classes
+  colnames(cm) <- classes
+  
   cm_df <- data.frame(
     # as.vector(cm) unrolls column-by-column (R is column-major), so
     # Observed must cycle through rownames fastest (times = ncol) and

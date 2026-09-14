@@ -13,13 +13,11 @@ source(here("functions","custom_functions.R"))
 
 # 1. PREPARE DATA
 
-pnadc_rebalanced <- rebalance_weights_national(pnadc)
-
-all_columns <- colnames(pnadc_rebalanced)
+all_columns <- colnames(pnadc)
 relevant_variables <- all_columns[!startsWith(all_columns, "V1032")]
 
 # Doing one hot encoding and generating a matrix with the survey object
-pnadc_matrix_national <- create_matrix_national(pnadc_rebalanced)
+pnadc_matrix_national <- create_matrix_national(pnadc)
 
 #2. SELECT VARIABLES
 
