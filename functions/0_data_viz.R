@@ -397,7 +397,7 @@ library(scales)
 # ----------------------------------------------------------------
 plot_confusion_matrix <- function(cm, is_percent = FALSE, title = NULL) {
   
-  classes <- c("Proprietário formal", "Morador informal", "Inquilino formal")
+  classes <- c("Inquilino formal", "Morador informal", "Proprietário formal")
   
   rownames(cm) <- classes
   colnames(cm) <- classes
@@ -443,6 +443,90 @@ plot_confusion_matrix <- function(cm, is_percent = FALSE, title = NULL) {
       # never get clipped against the plot edge.
       plot.margin  = margin(t = 15, r = 15, b = 15, l = 15)
     )
+}
+
+prediction_comparison_chart <- function(regional_results, nested_cv_results_national) {
+  
+  # 1. Data extraction
+  # Assuming the order of regions in the list matches the intended x-axis order
+  region_names <- c("Norte", "Nordeste", "Sudeste", "Sul", "Centro-Oeste")
+  
+  regional_means <- sapply(regional_results, function(x) x$mean_macro_f1)
+  regional_sds <- sapply(regional_results, function(x) x$sd_macro_f1)
+  
+  national_mean <- nested_cv_results_national$mean_macro_f1
+  national_sd <- nested_cv_results_national$sd_macro_f1
+  
+  # 2. Create the Data Frame for regional data
+  plot_data <- data.frame(
+    Region = factor(region_names, levels = region_names),
+    Mean = regional_means,
+    SD = regional_sds
+  )
+  
+  # Annotation text for the National model using formatting
+  national_label <- sprintf("Nacional: %.3f \u00B1 %.3f", national_mean, national_sd)
+  
+  # Strings for the legends using Unicode for Greek letters (mu and sigma)
+  nat_legend <- "Modelo nacional agregado (\u03BC \u00B1 \u03C3 entre iterações)"
+  reg_legend <- "Modelo regional (\u03BC \u00B1 \u03C3 entre iterações)"
+  
+  # 3. Build the Plot
+  plot_obj <- ggplot(plot_data, aes(x = Region, y = Mean)) +
+    
+    # Layer 1: Shaded rectangle for the National Standard Deviation
+    annotate("rect", xmin = -Inf, xmax = Inf, 
+             ymin = national_mean - national_sd, ymax = national_mean + national_sd, 
+             fill = "#97cdff", alpha = 0.8) +
+    
+    # Layer 2: Dashed line for the National Mean (mapped to generate legend)
+    geom_hline(aes(yintercept = national_mean, color = nat_legend), 
+               linetype = "dashed", linewidth = 0.8) +
+    
+    # Layer 3: Error Bars for Regional SD
+    geom_errorbar(aes(ymin = Mean - SD, ymax = Mean + SD, color = reg_legend), 
+                  width = 0.15, linewidth = 0.6) +
+    
+    # Layer 4: Points for Regional Mean (replaces the geom_bar)
+    geom_point(aes(color = reg_legend), size = 3.5) +
+    
+    # Layer 5: National Model Text Annotation
+    annotate("text", x = 4.5, y = (national_mean + national_sd + 0.003), 
+             label = national_label, color = "#309bff", size = 6) +
+    
+    # Manual Color Definition mapped to the legend texts
+    scale_color_manual(
+      name = NULL, 
+      values = setNames(c("#216cb2", "#4A4A4A"), c(nat_legend, reg_legend))
+    ) +
+    
+    # Customize the legend to correctly show a line for national and a point for regional
+    guides(color = guide_legend(override.aes = list(
+      linetype = c("dashed", "blank"), # Dashed for national, none for regional
+      shape = c(NA, 16),               # No shape for national, solid dot for regional
+      size = c(0.8, 3.5)               # Adjust sizes for the legend keys
+    ))) +
+    
+    # Y-Axis Limits Adjustment (keeps the zoom between 0.40 and 0.49)
+    coord_cartesian(ylim = c(0.41, 0.49)) +
+    scale_y_continuous(breaks = seq(0.41, 0.49, by = 0.01)) +
+    
+    # Clear Labels and Apply Minimalist Theme
+    labs(x = NULL, y = NULL) +
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_line(color = "#E5E5E5"),
+      axis.text.x = element_text(size = 16, margin = margin(t = 10), color = "#4A4A4A"),
+      axis.text.y = element_text(color = "#888888"),
+      legend.position = "bottom",
+      legend.justification = "left",
+      legend.box = "horizontal",
+      legend.margin = margin(t = 15)
+    )
+  
+  return(plot_obj)
 }
 
 ## 2.2. INTERPRETATION -------------------------------------------------------------------------------------------

@@ -68,6 +68,13 @@ sapply(regional_results, function(x) x$sd_macro_f1)
 # regional_results[["norte"]]$class_table
 ```
 
+```{r}
+
+prediction_summary_chart <- prediction_comparison_chart(regional_results, nested_cv_results_national)
+
+ggsave("../outputs/prediction_comparison_chart.png",  prediction_summary_chart,  width = 10, height = 6, dpi = 300, bg = "white")
+```
+
 ## Interpretação
 
 ### LASSO
