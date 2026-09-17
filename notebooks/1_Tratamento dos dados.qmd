@@ -29,7 +29,7 @@ source("../functions/0_data_viz.R")
 População total estimada a partir do recorte da amostra:
 
 ```{r}
-table_conditions <- svytable(~S01001, pnadc)
+table_conditions <- svytable(~tenure_condition, pnadc)
 pop_total <- sum(table_conditions)
 print(format(pop_total, big.mark = ",", scientific = FALSE))
 ```
@@ -423,6 +423,80 @@ svytable(~macroregion, pnadc)
 
 ```{r}
 generate_summary_table(pnadc)
+```
+
+```{r}
+run_regional_lasso <- function(survey_object) {
+
+  # Extract the flat data frame
+  survey_df <- survey_object$variables
+  
+  # Define the regions
+  regions <- c("norte", "nordeste", "sudeste", "sul", "centro-oeste")
+  
+  # Create a list to store the full cv.glmnet model objects
+  lasso_models <- list()
+  
+  for (reg in regions) {
+    cat(sprintf("Processing region: %s...\n", reg))
+    
+    # Isolate the specific macroregion
+    temp_df <- subset(survey_df, macroregion == reg)
+    
+    # Prepare the matrices and vectors
+    lasso_data <- create_matrix_regional(temp_df)
+    
+    # Run the LASSO
+    cv_lasso <- cv.glmnet(
+      x = lasso_data$X_matrix,
+      y = lasso_data$Y,
+      family = "multinomial",
+      weights = lasso_data$weights
+    )
+    
+    # saving the model
+    lasso_models[[reg]] <- cv_lasso
+    
+    # RAM Cleanup
+    rm(temp_df, lasso_data, cv_lasso)
+    gc()
+  }
+```
+
+```{r}
+generate_summary_table_reg <- function(survey_object) {
+  
+  # Define the regions
+  regions <- c("norte", "nordeste", "sudeste", "sul", "centro-oeste")
+  
+  # Create a list to store the full cv.glmnet model objects
+  regional_tables <- list()
+  
+  for (reg in regions) {
+    cat(sprintf("Processing region: %s...\n", reg))
+    
+    # Isolate the specific macroregion
+    temp_df <- subset(survey_object, macroregion == reg)
+    
+    
+    regional_table <- generate_summary_table(temp_df)
+    
+    
+    # saving the model
+    regional_tables[[reg]] <- regional_table
+    
+    # RAM Cleanup
+    rm(temp_df, regional_table)
+    gc()
+  }
+  
+  return(regional_tables)
+
+}
+```
+
+```{r}
+generate_summary_table_reg(pnadc)
 ```
 
 ```{r}

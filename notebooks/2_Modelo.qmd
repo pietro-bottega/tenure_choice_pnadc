@@ -106,6 +106,45 @@ length(select_vars_national)
 ```
 
 ```{r}
+regression_variables <- c("age", "race", "household_size", "family_structure", "household_income", "household_income_pcapita", "education_years", "wealth_index", "head_dependency", "worker_status", "single_mom", "metropolitan_area")
+
+
+select_vars_national_uniq <- clean_lasso_names(colnames(pnadc_matrix_national$X_matrix), regression_variables)
+length(select_vars_national_uniq)
+```
+
+```{r}
+colnames(pnadc_matrix_national$X_matrix)
+```
+
+```{r}
+clean_lasso_names <- function(matrix, variables) {
+  
+  # Create an empty vector
+  clean_vector <- c()
+  
+  # Iterate over variables in the matrix, one hot encoded
+  for (matrix_name in matrix) {
+    
+    # Iterate over the list of original variables
+    for (orig_var in variables) {
+      
+      # If the matrix name starts exactly with the original variable name
+      if (startsWith(matrix_name, orig_var)) {
+        clean_vector <- c(clean_vector, orig_var)
+        break # Exit the inner loop 
+      }
+    }
+  }
+  
+  # Get unique from multiple categories
+  clean_vector <- unique(clean_vector)
+  
+  return(clean_vector)
+}
+```
+
+```{r}
 plot(lasso_national)
 ```
 

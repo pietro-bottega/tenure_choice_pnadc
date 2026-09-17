@@ -77,7 +77,11 @@ var_new_names <- c(
 
 pnadc <- rename_variables(pnadc, var_new_names)
 
+unwtd.count(~tenure_condition, pnadc)
+
 pnadc <- remove_missing(pnadc)
+
+unwtd.count(~tenure_condition, pnadc)
 
 message("cleaned survey object")
 
