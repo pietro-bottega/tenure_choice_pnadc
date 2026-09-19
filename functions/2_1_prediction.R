@@ -43,6 +43,7 @@ nested_cv_results_national <- run_nested_cv(
   design_obj            = pnadc,
   regression_variables  = regression_variables,
   cluster_var           = "UPA",
+  group_var             = "macroregion",
   k = 10,
   inner_nfolds = 10
 )

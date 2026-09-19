@@ -593,7 +593,7 @@ apply_factor_levels <- function(df, level_map) {
 # ----------------------------------------------------------------
 run_fold_nested <- function(fold_i, row_fold, df, regression_variables,
                             weight_var, y_var, levels_all, seed,
-                            inner_nfolds = 10) {
+                            inner_nfolds = 10, group_var = NULL) {
   
   train_idx <- which(row_fold != fold_i)
   test_idx  <- which(row_fold == fold_i)
@@ -719,7 +719,8 @@ run_fold_nested <- function(fold_i, row_fold, df, regression_variables,
     class_metrics       = class_metrics,
     y_true              = as.character(test_df[[y_var]]),
     y_pred              = pred_class,
-    w                   = test_df$.wt  # original weights, for pooled confusion matrix
+    w                   = test_df$.wt,  # original weights, for pooled confusion matrix
+    group               = if (!is.null(group_var)) as.character(test_df[[group_var]]) else NULL
   )
 }
 
@@ -735,7 +736,8 @@ run_nested_cv <- function(design_obj, regression_variables, cluster_var,
                           y_var = "tenure_condition",
                           k = 10, seed = 123, inner_nfolds = 10,
                           levels_all_override = NULL,
-                          force_train_ids = NULL) {
+                          force_train_ids = NULL,
+                          group_var = NULL) {
   
   df <- design_obj$variables
   weight_var <- ".sampling_weight"
@@ -760,7 +762,7 @@ run_nested_cv <- function(design_obj, regression_variables, cluster_var,
       fold_i = i, row_fold = row_fold, df = df,
       regression_variables = regression_variables,
       weight_var = weight_var, y_var = y_var, levels_all = levels_all,
-      seed = seed, inner_nfolds = inner_nfolds
+      seed = seed, inner_nfolds = inner_nfolds, group_var = group_var
     )
   }
   
@@ -812,6 +814,22 @@ run_nested_cv <- function(design_obj, regression_variables, cluster_var,
   )
   confusion_matrix_pct <- row_normalize_confusion_matrix(confusion_matrix)
   
+  # ---- Out-of-sample macro-F1 by group (e.g. macroregion), using the
+  #      SAME pooled national predictions above. Only computed if
+  #      group_var was supplied.
+  by_group_macro_f1 <- NULL
+  if (!is.null(group_var)) {
+    pooled_group <- unlist(lapply(fold_results, function(x) x$group))
+    groups <- sort(unique(pooled_group))
+    
+    by_group_macro_f1 <- do.call(rbind, lapply(groups, function(g) {
+      idx <- pooled_group == g
+      cm  <- weighted_class_metrics(pooled_y_true[idx], pooled_y_pred[idx],
+                                    pooled_w[idx], levels_all)
+      data.frame(group = g, macro_f1 = mean(cm$f1), n = sum(idx))
+    }))
+  }
+  
   list(
     mean_macro_f1           = mean(macro_f1_by_fold),
     sd_macro_f1             = sd(macro_f1_by_fold),
@@ -821,6 +839,7 @@ run_nested_cv <- function(design_obj, regression_variables, cluster_var,
     class_multiplier_table  = class_multiplier_table,
     confusion_matrix        = confusion_matrix,      # built from ORIGINAL weights
     confusion_matrix_pct    = confusion_matrix_pct,  # row-normalized, % of true population
+    by_group_macro_f1       = by_group_macro_f1,     # out-of-sample macro-F1 per group_var value
     fold_details            = fold_results
   )
 }
