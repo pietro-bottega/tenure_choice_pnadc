@@ -822,12 +822,27 @@ run_nested_cv <- function(design_obj, regression_variables, cluster_var,
     pooled_group <- unlist(lapply(fold_results, function(x) x$group))
     groups <- sort(unique(pooled_group))
     
-    by_group_macro_f1 <- do.call(rbind, lapply(groups, function(g) {
-      idx <- pooled_group == g
-      cm  <- weighted_class_metrics(pooled_y_true[idx], pooled_y_pred[idx],
-                                    pooled_w[idx], levels_all)
-      data.frame(group = g, macro_f1 = mean(cm$f1), n = sum(idx))
+    # Calculate macro_f1 for each group within each fold separately
+    fold_group_metrics <- do.call(rbind, lapply(fold_results, function(fr) {
+      do.call(rbind, lapply(groups, function(g) {
+        idx <- fr$group == g
+        if (sum(idx) > 0) {
+          cm <- weighted_class_metrics(fr$y_true[idx], fr$y_pred[idx],
+                                       fr$w[idx], levels_all)
+          data.frame(fold = fr$fold, group = g, macro_f1 = mean(cm$f1), n = sum(idx))
+        } else {
+          NULL
+        }
+      }))
     }))
+    
+    # Aggregate mean, standard deviation, and total n across folds
+    group_mean <- aggregate(macro_f1 ~ group, data = fold_group_metrics, FUN = mean)
+    group_sd   <- aggregate(macro_f1 ~ group, data = fold_group_metrics, FUN = sd)
+    group_n    <- aggregate(n ~ group, data = fold_group_metrics, FUN = sum)
+    
+    by_group_macro_f1 <- merge(group_mean, group_sd, by = "group", suffixes = c("_mean", "_sd"))
+    by_group_macro_f1 <- merge(by_group_macro_f1, group_n, by = "group")
   }
   
   list(

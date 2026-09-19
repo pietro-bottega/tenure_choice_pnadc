@@ -71,3 +71,22 @@ for (reg in regions) {
     seed = 123
   )
 }
+
+# Comparison
+
+national_by_region <- nested_cv_results_national$by_group_macro_f1
+
+regional_means <- sapply(regional_results, function(x) x$mean_macro_f1)
+regional_sds   <- sapply(regional_results, function(x) x$sd_macro_f1)
+
+regions <- as.character(national_by_region$group)
+
+comparison <- data.frame(
+  region                = regions,
+  national_on_region    = national_by_region$macro_f1_mean,
+  national_on_region_sd = national_by_region$macro_f1_sd,
+  regional_own          = regional_means[regions],
+  regional_own_sd       = regional_sds[regions]
+)
+
+comparison

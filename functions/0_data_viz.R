@@ -529,6 +529,64 @@ prediction_comparison_chart <- function(regional_results, nested_cv_results_nati
   return(plot_obj)
 }
 
+generate_comparison_plot <- function(comparison) {
+  
+  n_regions <- nrow(comparison)
+  
+  # 1. Definir as legendas
+  label_regional <- "Modelo Regional (\u03BC \u00B1 \u03C3)"
+  label_national <- "Modelo Nacional testado na Região (\u03BC \u00B1 \u03C3)"
+  
+  # 2. Transformar o dataframe em formato longo mapeando diretamente as colunas da tabela
+  plot_data <- data.frame(
+    Region = rep(comparison$region, 2),
+    Model = factor(rep(c(label_regional, label_national), each = n_regions),
+                   levels = c(label_national, label_regional)), 
+    mean_val = c(comparison$regional_own, comparison$national_on_region),
+    sd_val = c(comparison$regional_own_sd, comparison$national_on_region_sd)
+  )
+  
+  # 3. Definir o afastamento horizontal para que as barras não fiquem sobrepostas
+  dodge_pos <- position_dodge(width = 0.4)
+  
+  # 4. Construir o gráfico
+  plot_obj <- ggplot(plot_data, aes(x = Region, y = mean_val, color = Model)) +
+    
+    # Layer 1: Barras de erro
+    geom_errorbar(aes(ymin = mean_val - sd_val, ymax = mean_val + sd_val), 
+                  width = 0.15, linewidth = 0.6, position = dodge_pos) +
+    
+    # Layer 2: Pontos da média
+    geom_point(size = 3.5, position = dodge_pos) +
+    
+    # Cores
+    scale_color_manual(
+      name = NULL,
+      values = c("#5479C4", "#4A4A4A") # Azul para Nacional, Cinza para Regional
+    ) +
+    
+    # Limites do eixo Y
+    coord_cartesian(ylim = c(0.36, 0.50)) +
+    scale_y_continuous(breaks = seq(0.36, 0.50, by = 0.02)) +
+    
+    # Textos e tema
+    labs(x = NULL, y = "Macro-F1") +
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_line(color = "#E5E5E5"),
+      axis.text.x = element_text(size = 14, margin = margin(t = 10), color = "#4A4A4A"),
+      axis.text.y = element_text(size = 12, color = "#888888"),
+      legend.position = "top",                  # Movido para o topo
+      legend.justification = "center",
+      legend.box = "horizontal",
+      legend.margin = margin(b = 10)            # Margem alterada para a parte de baixo (bottom)
+    )
+  
+  return(plot_obj)
+}
+
 ## 2.2. INTERPRETATION -------------------------------------------------------------------------------------------
 
 create_selection_table <- function(all_variables, selected_lists) {
