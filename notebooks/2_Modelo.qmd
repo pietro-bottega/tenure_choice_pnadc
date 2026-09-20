@@ -61,18 +61,69 @@ ggsave("../outputs/confusion_matrix_national_percent.png", p_percent, width = 10
 #      run, if you want to add it to this same list under "brasil").
 sapply(regional_results, function(x) x$mean_macro_f1)
 sapply(regional_results, function(x) x$sd_macro_f1)
-
-# Per-region confusion matrices / class tables are accessed the same way
-# as before, e.g.:
-# regional_results[["sudeste"]]$confusion_matrix
-# regional_results[["norte"]]$class_table
 ```
 
 ```{r}
+comparison
+```
 
-prediction_summary_chart <- prediction_comparison_chart(regional_results, nested_cv_results_national)
+```{r}
+prediction_summary_chart <- generate_comparison_plot(comparison)
+print(prediction_summary_chart)
+```
 
-ggsave("../outputs/prediction_comparison_chart.png",  prediction_summary_chart,  width = 10, height = 6, dpi = 300, bg = "white")
+```{r}
+ggsave("../outputs/prediction_summary_chart.png",  prediction_summary_chart,  width = 10, height = 6, dpi = 300, bg = "white")
+```
+
+```{r}
+mean_national_on_region <- mean(comparison$national_on_region, na.rm = TRUE)
+mean_regional_own       <- mean(comparison$regional_own, na.rm = TRUE)
+
+# Print the results
+cat("Average of National Model on Regions: ", round(mean_national_on_region, 4), "\n")
+cat("Average of Regional (Own) Models:    ", round(mean_regional_own, 4), "\n")
+```
+
+```{r}
+weighted_mean_national <- weighted.mean(
+  x = comparison$national_on_region, 
+  w = comparison$population_size, 
+  na.rm = TRUE
+)
+
+weighted_mean_regional <- weighted.mean(
+  x = comparison$regional_own, 
+  w = comparison$population_size, 
+  na.rm = TRUE
+)
+
+# Print the results
+cat("Weighted Average of National Model on Regions: ", round(weighted_mean_national, 4), "\n")
+cat("Weighted Average of Regional (Own) Models:    ", round(weighted_mean_regional, 4), "\n")
+```
+
+#### Regionais: detalhes
+
+```{r}
+
+regional_results[["sudeste"]]$confusion_matrix
+```
+
+```{r}
+regional_results[["centro-oeste"]]$class_table
+```
+
+```{r}
+regional_results[["norte"]]$class_table
+```
+
+```{r}
+regional_results[["sul"]]$class_table
+```
+
+```{r}
+regional_results[["sul"]]$selection_freq
 ```
 
 ## Interpretação
@@ -111,10 +162,6 @@ regression_variables <- c("age", "race", "household_size", "family_structure", "
 
 select_vars_national_uniq <- clean_lasso_names(colnames(pnadc_matrix_national$X_matrix), regression_variables)
 length(select_vars_national_uniq)
-```
-
-```{r}
-colnames(pnadc_matrix_national$X_matrix)
 ```
 
 ```{r}
@@ -224,6 +271,10 @@ reference_levels
 ### Post-LASSO
 
 ```{r}
+post_lasso_national <- readRDS("post_lasso_national.rds")
+```
+
+```{r}
 # Extract the raw summary object
 mod_sum <- summary(post_lasso_national)
 
@@ -292,4 +343,12 @@ final_table <- final_data %>%
   )
 
 final_table
+```
+
+```{r}
+odds_table <- data.frame(
+  term = names(coef(post_lasso_national)),
+  OR   = exp(coef(post_lasso_national))
+)
+odds_table
 ```

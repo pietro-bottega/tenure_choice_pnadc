@@ -13,24 +13,6 @@ source(here("functions","custom_functions.R"))
 
 # 1. POST LASSO FOR NATIONAL MODEL 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 formula_national <- create_formula(
   y = "tenure_condition",
   x = clean_select_vars_national
@@ -38,7 +20,7 @@ formula_national <- create_formula(
 
 post_lasso_national <- svy_vglm(
   formula = formula_national,
-  design = pnadc_rebalanced,
+  design = pnadc,
   family = multinomial(refLevel = 1)
 )
 

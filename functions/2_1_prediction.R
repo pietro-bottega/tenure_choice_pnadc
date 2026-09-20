@@ -89,4 +89,6 @@ comparison <- data.frame(
   regional_own_sd       = regional_sds[regions]
 )
 
-comparison
+pop_totals <- as.data.frame(svytable(~macroregion, design = pnadc))
+colnames(pop_totals) <- c("region", "population_size")
+comparison <- merge(comparison, pop_totals, by = "region", all.x = TRUE)
