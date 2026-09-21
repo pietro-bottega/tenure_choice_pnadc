@@ -352,3 +352,207 @@ odds_table <- data.frame(
 )
 odds_table
 ```
+
+```{r}
+plot_age_tenure_curves <- function(model, data_full, regression_variables,
+                                   label_map = c(
+                                     "proprietario_formal" = "Proprietário formal",
+                                     "morador_informal"    = "Morador informal",
+                                     "inquilino_formal"    = "Inquilino formal"
+                                   )) {
+  
+  get_mode <- function(x) {
+    ux <- unique(x)
+    ux[which.max(tabulate(match(x, ux)))]
+  }
+  
+  # ---- Build ONE representative row: every variable fixed at its
+  #      mean (numeric) or mode (categorical), except age, which varies.
+  representative_row <- data_full[1, regression_variables, drop = FALSE]
+  
+  for (v in regression_variables) {
+    if (v == "age") next
+    representative_row[[v]] <- if (is.numeric(data_full[[v]])) {
+      mean(data_full[[v]], na.rm = TRUE)
+    } else {
+      get_mode(data_full[[v]])
+    }
+  }
+  
+  age_seq <- seq(min(data_full$age, na.rm = TRUE), max(data_full$age, na.rm = TRUE), by = 1)
+  
+  newdata <- representative_row[rep(1, length(age_seq)), ]
+  newdata$age <- age_seq
+  rownames(newdata) <- NULL
+  
+  # Force the SAME factor levels the model was trained on.
+  for (v in regression_variables) {
+    if (is.character(data_full[[v]]) || is.factor(data_full[[v]])) {
+      newdata[[v]] <- factor(newdata[[v]], levels = levels(factor(data_full[[v]])))
+    }
+  }
+  
+  pred_probs <- VGAM::predictvglm(model, newdata = newdata, type = "response")
+  
+  plot_df <- data.frame(
+    age = rep(age_seq, times = ncol(pred_probs)),
+    category    = rep(colnames(pred_probs), each = length(age_seq)),
+    probability = as.vector(pred_probs)
+  )
+  
+  plot_df$category_label <- label_map[plot_df$category]
+  plot_df$category_label <- factor(plot_df$category_label, levels = unname(label_map))
+  
+  ggplot(plot_df, aes(x = age, y = probability, color = category_label, linetype = category_label)) +
+    geom_line(linewidth = 1.2) +
+    scale_color_manual(name = NULL, values = c(
+      "Proprietário formal"     = "#007197",
+      "Morador informal" = "#f47a00",
+      "Inquilino formal"    = "#62c8d3"
+    )) +
+    scale_linetype_manual(name = NULL, values = c(
+      "Proprietário formal"     = "solid",
+      "Morador informal" = "solid",
+      "Inquilino formal"    = "solid"
+    )) +
+    scale_y_continuous(limits = c(0, NA)) +
+    labs(x = "Idade", y = "Probabilidade") +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor  = element_blank(),
+      legend.position   = "top",
+      legend.text = element_text(size = 13),
+      legend.justification = "center",
+      legend.box = "horizontal",
+      legend.margin = margin(b = 10),
+      axis.title.x = element_text(size = 13),
+      axis.title.y = element_text(size = 13),
+      plot.title        = element_text(face = "bold", size = 14),
+      axis.text         = element_text(color = "black")
+    )
+}
+```
+
+```{r}
+regression_variables <- c("age", "race", "household_size", "family_structure",
+                            "household_income", "household_income_pcapita",
+                            "education_years", "wealth_index", "head_dependency",
+                            "worker_status", "single_mom", "metropolitan_area",
+                            "macroregion")
+
+p_age <- plot_age_tenure_curves(
+   model                = post_lasso_national$fit,
+   data_full            = pnadc$variables,
+   regression_variables = regression_variables
+)
+print(p_age)
+
+ggsave("../outputs/age_tenure_curves.png", p_age, width = 10, height = 6, dpi = 300, bg = "white")
+```
+
+```{r}
+plot_wealth_tenure_curves <- function(model, data_full, regression_variables,
+                               label_map = c(
+                                 "proprietario_formal" = "Proprietário formal",
+                                 "morador_informal"    = "Morador informal",
+                                 "inquilino_formal"    = "Inquilino formal"
+                               )) {
+  
+  get_mode <- function(x) {
+    ux <- unique(x)
+    ux[which.max(tabulate(match(x, ux)))]
+  }
+  
+  # ---- Build ONE representative row: every variable fixed at its
+  #      mean (numeric) or mode (categorical), except age, which varies.
+  representative_row <- data_full[1, regression_variables, drop = FALSE]
+  
+  for (v in regression_variables) {
+    if (v == "wealth_index") next
+    representative_row[[v]] <- if (is.numeric(data_full[[v]])) {
+      mean(data_full[[v]], na.rm = TRUE)
+    } else {
+      get_mode(data_full[[v]])
+    }
+  }
+  
+  wealth_index_seq <- seq(min(data_full$wealth_index, na.rm = TRUE), max(data_full$wealth_index, na.rm = TRUE), by = 1)
+  
+  newdata <- representative_row[rep(1, length(wealth_index_seq)), ]
+  newdata$wealth_index <- wealth_index_seq
+  rownames(newdata) <- NULL
+  
+  # Force the SAME factor levels the model was trained on.
+  for (v in regression_variables) {
+    if (is.character(data_full[[v]]) || is.factor(data_full[[v]])) {
+      newdata[[v]] <- factor(newdata[[v]], levels = levels(factor(data_full[[v]])))
+    }
+  }
+  
+  pred_probs <- VGAM::predictvglm(model, newdata = newdata, type = "response")
+  
+  plot_df <- data.frame(
+    wealth_index = rep(wealth_index_seq, times = ncol(pred_probs)),
+    category    = rep(colnames(pred_probs), each = length(wealth_index_seq)),
+    probability = as.vector(pred_probs)
+  )
+  
+  plot_df$category_label <- label_map[plot_df$category]
+  plot_df$category_label <- factor(plot_df$category_label, levels = unname(label_map))
+  
+  ggplot(plot_df, aes(x = wealth_index, y = probability, color = category_label, linetype = category_label)) +
+    geom_line(linewidth = 1.2) +
+    coord_cartesian(xlim = c(0, 8)) +
+    scale_color_manual(name = NULL, values = c(
+      "Proprietário formal"     = "#007197",
+      "Morador informal" = "#f47a00",
+      "Inquilino formal"    = "#62c8d3"
+    )) +
+    scale_linetype_manual(name = NULL, values = c(
+      "Proprietário formal"     = "solid",
+      "Morador informal" = "solid",
+      "Inquilino formal"    = "solid"
+    )) +
+    scale_y_continuous(limits = c(0, NA)) +
+    labs(x = "Índice de riqueza", y = "Probabilidade") +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor  = element_blank(),
+      legend.position   = "top",
+      legend.text = element_text(size = 13),
+      legend.justification = "center",
+      legend.box = "horizontal",
+      legend.margin = margin(b = 10),
+      axis.title.x = element_text(size = 13),
+      axis.title.y = element_text(size = 13),
+      plot.title        = element_text(face = "bold", size = 14),
+      axis.text         = element_text(color = "black")
+    )
+}
+```
+
+```{r}
+regression_variables <- c("age", "race", "household_size", "family_structure",
+                          "household_income", "household_income_pcapita",
+                          "education_years", "wealth_index", "head_dependency",
+                          "worker_status", "single_mom", "metropolitan_area",
+                          "macroregion")
+
+p_wealth <- plot_wealth_tenure_curves(
+  model                = post_lasso_national$fit,
+  data_full            = pnadc$variables,
+  regression_variables = regression_variables
+)
+print(p_wealth)
+
+ggsave("../outputs/wealth_tenure_curves.png", p_wealth, width = 10, height = 6, dpi = 300, bg = "white")
+```
+
+```{r}
+# Using ONLY the coefficients from this exact table, at your
+# representative profile, varying wealth_index = 0 vs 8
+newdata_check <- representative_row[c(1,1), ]
+newdata_check$wealth_index <- c(0, 6)
+
+VGAM::predictvglm(post_lasso_national$fit, newdata = newdata_check, type = "response")
+```
