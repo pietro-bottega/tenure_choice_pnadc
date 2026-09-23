@@ -18,6 +18,7 @@ library(tidyr)
 library(stringr) 
 library(gt)
 library(tibble)
+library(ggplot2)
 
 source(here("functions","custom_functions.R"))
 source(here("functions","0_data_viz.R"))
@@ -165,33 +166,6 @@ length(select_vars_national_uniq)
 ```
 
 ```{r}
-clean_lasso_names <- function(matrix, variables) {
-  
-  # Create an empty vector
-  clean_vector <- c()
-  
-  # Iterate over variables in the matrix, one hot encoded
-  for (matrix_name in matrix) {
-    
-    # Iterate over the list of original variables
-    for (orig_var in variables) {
-      
-      # If the matrix name starts exactly with the original variable name
-      if (startsWith(matrix_name, orig_var)) {
-        clean_vector <- c(clean_vector, orig_var)
-        break # Exit the inner loop 
-      }
-    }
-  }
-  
-  # Get unique from multiple categories
-  clean_vector <- unique(clean_vector)
-  
-  return(clean_vector)
-}
-```
-
-```{r}
 plot(lasso_national)
 ```
 
@@ -271,7 +245,7 @@ reference_levels
 ### Post-LASSO
 
 ```{r}
-post_lasso_national <- readRDS("post_lasso_national.rds")
+post_lasso_national <- readRDS("../post_lasso_national.rds")
 ```
 
 ```{r}
@@ -555,4 +529,62 @@ newdata_check <- representative_row[c(1,1), ]
 newdata_check$wealth_index <- c(0, 6)
 
 VGAM::predictvglm(post_lasso_national$fit, newdata = newdata_check, type = "response")
+```
+
+```{r}
+# Restrict to the two categories being contrasted (owner vs. reference renter)
+subset_df <- pnadc$variables[
+  pnadc$variables$tenure_condition %in% c("proprietario_formal", "inquilino_formal"), ]
+
+# How much of wealth_index's variation is already explained by the
+# OTHER significant predictors, within this specific comparison?
+summary(lm(wealth_index ~ household_income_pcapita + education_years + age,
+           data = subset_df, weights = weights(pnadc, "sampling")[
+             pnadc$variables$tenure_condition %in% c("proprietario_formal", "inquilino_formal")]))
+```
+
+```{r}
+
+# Compare mean of wealth across par of conditions
+
+svyby(~wealth_index, ~tenure_condition, 
+      subset(pnadc, tenure_condition %in% c("proprietario_formal", "inquilino_formal")),
+      svymean, na.rm = TRUE)
+```
+
+```{r}
+subset_df <- pnadc$variables[
+  pnadc$variables$tenure_condition %in% c("proprietario_formal", "inquilino_formal"), ]
+subset_w <- weights(pnadc, "sampling")[
+  pnadc$variables$tenure_condition %in% c("proprietario_formal", "inquilino_formal")]
+
+subset_w_norm <- subset_w / mean(subset_w)   # normalize, same principle as svy_vglm's internal step
+
+print("just impact of wealth")
+summary(glm(factor(tenure_condition) ~ wealth_index, data = subset_df,
+            weights = subset_w_norm, family = quasibinomial))
+
+print("impact of wealth and age")
+summary(glm(factor(tenure_condition) ~ wealth_index + age, data = subset_df,
+            weights = subset_w_norm, family = quasibinomial))
+
+print("impact of wealth and age and income")
+summary(glm(factor(tenure_condition) ~ wealth_index + age + household_income_pcapita,
+            data = subset_df, weights = subset_w_norm, family = quasibinomial))
+
+print("impact of wealth and age and education")
+summary(glm(factor(tenure_condition) ~ wealth_index + age + household_income_pcapita + education_years,
+            data = subset_df, weights = subset_w_norm, family = quasibinomial))
+```
+
+```{r}
+svyby(~wealth_index, ~tenure_condition, pnadc, svymean, na.rm = TRUE)
+svyby(~household_income_pcapita, ~tenure_condition, pnadc, svymean, na.rm = TRUE)
+svyby(~education_years, ~tenure_condition, pnadc, svymean, na.rm = TRUE)
+
+# Quantiles give a fuller picture than the mean alone -- worth checking
+# whether formal renters cluster tightly around a specific wealth band
+# or are actually quite spread out
+svyby(~wealth_index, ~tenure_condition, pnadc, svyquantile,
+      quantiles = c(0.25, 0.5, 0.75), na.rm = TRUE)
 ```

@@ -25,3 +25,4 @@ post_lasso_national <- svy_vglm(
 )
 
 saveRDS(post_lasso_national, "post_lasso_national.rds")
+post_lasso_national <- readRDS("post_lasso_national.rds")

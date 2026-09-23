@@ -400,27 +400,18 @@ get_selected_vars <- function(coefs) {
 
 clean_lasso_names <- function(matrix, variables) {
   
-  # Create an empty vector
-  clean_vector <- c()
+  variables <- variables[order(-nchar(variables))]
   
-  # Iterate over variables in the matrix, one hot encoded
+  clean_vector <- c()
   for (matrix_name in matrix) {
-    
-    # Iterate over the list of original variables
     for (orig_var in variables) {
-      
-      # If the matrix name starts exactly with the original variable name
       if (startsWith(matrix_name, orig_var)) {
         clean_vector <- c(clean_vector, orig_var)
-        break # Exit the inner loop 
+        break
       }
     }
   }
-  
-  # Get unique from multiple categories
-  clean_vector <- unique(clean_vector)
-  
-  return(clean_vector)
+  unique(clean_vector)
 }
 
 create_formula <- function(y, x) {
