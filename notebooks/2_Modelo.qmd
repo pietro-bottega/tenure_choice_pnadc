@@ -263,9 +263,9 @@ if ("coeftable" %in% names(mod_sum)) {
   raw_matrix <- as.matrix(mod_sum)
 }
 
-# Get categories
-all_levels <- pnadc$variables$tenure_condition
-estimated_levels <- all_levels[-1]
+# Get categorie
+category_order <- colnames(post_lasso_national$fit@fitted.values)
+estimated_levels <- category_order[-1]  # drop the reference category (position 1)
 
 clean_df <- data.frame(
   Term = rownames(raw_matrix),
@@ -548,7 +548,7 @@ summary(lm(wealth_index ~ household_income_pcapita + education_years + age,
 # Compare mean of wealth across par of conditions
 
 svyby(~wealth_index, ~tenure_condition, 
-      subset(pnadc, tenure_condition %in% c("proprietario_formal", "inquilino_formal")),
+      subset(pnadc, tenure_condition %in% c("proprietario_formal", "inquilino_formal","morador_informal")),
       svymean, na.rm = TRUE)
 ```
 
