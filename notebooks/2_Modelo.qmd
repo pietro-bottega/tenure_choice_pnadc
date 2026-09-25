@@ -290,8 +290,9 @@ final_table <- final_data %>%
   group_by(Equation) %>%
   gt() %>%
   cols_label(
-    Estimate_B = "Estimate B",
-    Std_Error = "Std. error",
+    Variable = "Variável",
+    Estimate_B = "Coef. estimado",
+    Std_Error = "Erro padrão",
     Wald_z = "Wald",
     Sig = "Sig.",
     Exp_B = "Exp(B)"
@@ -306,7 +307,7 @@ final_table <- final_data %>%
   ) %>%
   tab_header(
     title = md("**TABLE 4**"),
-    subtitle = "Multinomial logit model tenure choice"
+    subtitle = "Modelo logit multinomial"
   ) %>%
   tab_options(
     row_group.font.weight = "bold",
