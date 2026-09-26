@@ -1,0 +1,51 @@
+---
+title: "3_Diferencas regionais"
+format: html
+---
+
+# Análise das diferenças regionais
+
+```{r}
+library(here)
+library(glmnet)
+library(svyVGAM)
+library(PNADcIBGE) 
+library(survey) 
+library(dplyr) 
+library(tidyr) 
+library(stringr) 
+library(gt)
+library(tibble)
+library(ggplot2)
+
+source(here("functions","custom_functions.R"))
+source(here("functions","0_data_viz.R"))
+```
+
+## Discriminação racial
+
+Seleção de raça ou cor pardo na região Norte
+
+```{r}
+pnadc_norte <- subset(pnadc, macroregion == "norte")
+svytable(~race, pnadc_norte, Ntotal = 100)
+```
+
+```{r}
+svytable(~race + tenure_condition, pnadc_norte, Ntotal = 100)
+```
+
+```{r}
+svytable(~race, pnadc, Ntotal = 100)
+```
+
+```{r}
+create_coef_table(post_lasso_norte)
+```
+
+Sem seleção no centro-oeste
+
+```{r}
+pnadc_centrooeste <- subset(pnadc, macroregion == "centro-oeste")
+svytable(~race, pnadc_centrooeste, Ntotal = 100)
+```

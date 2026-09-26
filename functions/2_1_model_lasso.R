@@ -40,6 +40,7 @@ regional_models <- run_regional_lasso(pnadc)
 
 norte_coefs <- coef(regional_models[["norte"]], s = "lambda.1se")
 select_vars_norte <- get_selected_vars(norte_coefs)
+clean_select_vars_norte <- clean_lasso_names(select_vars_norte, relevant_variables)
 
 nordeste_coefs <- coef(regional_models[["nordeste"]], s = "lambda.1se")
 select_vars_nordeste <- get_selected_vars(nordeste_coefs)

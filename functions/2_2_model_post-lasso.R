@@ -26,3 +26,23 @@ post_lasso_national <- svy_vglm(
 
 saveRDS(post_lasso_national, "post_lasso_national.rds")
 post_lasso_national <- readRDS("post_lasso_national.rds")
+
+# 2. REGIONAL MODELS
+
+# 2.1. NORTE
+
+pnadc_norte <- subset(pnadc, macroregion == "norte")
+
+formula_norte <- create_formula(
+  y = "tenure_condition",
+  x = clean_select_vars_norte
+)
+
+post_lasso_norte <- suppressWarnings(
+  svy_vglm(
+    formula = formula_norte,
+    design = pnadc_norte,
+    family = multinomial(refLevel = 1)
+  )
+)
+

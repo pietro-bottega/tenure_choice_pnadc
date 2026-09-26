@@ -612,3 +612,75 @@ create_selection_table <- function(all_variables, selected_lists) {
   return(result_table)
 }
 
+create_coef_table <- function(post_lasso_model) {
+  
+  # Extract the raw summary object
+  mod_sum <- summary(post_lasso_model)
+  
+  # Search for the matrix
+  if ("coeftable" %in% names(mod_sum)) {
+    raw_matrix <- mod_sum$coeftable
+  } else if ("coefficients" %in% names(mod_sum)) {
+    raw_matrix <- mod_sum$coefficients
+  } else if ("coef3" %in% names(mod_sum)) {
+    raw_matrix <- mod_sum$coef3
+  } else {
+    raw_matrix <- as.matrix(mod_sum)
+  }
+  
+  # Get categories
+  category_order <- colnames(post_lasso_model$fit@fitted.values)
+  estimated_levels <- category_order[-1]  # drop the reference category (position 1)
+  
+  clean_df <- data.frame(
+    Term = rownames(raw_matrix),
+    Estimate_B = as.numeric(raw_matrix[, 1]),
+    Std_Error = as.numeric(raw_matrix[, 2]),
+    Wald_z = as.numeric(raw_matrix[, 3]),
+    Sig = as.numeric(raw_matrix[, 4]),
+    stringsAsFactors = FALSE
+  )
+  
+  # Clean the text, Map Categories, and calculate Odds Ratio
+  clean_df$Variable <- sub(":.*", "", clean_df$Term)
+  clean_df$Eq_Index <- as.numeric(sub(".*:", "", clean_df$Term))
+  clean_df$Equation <- estimated_levels[clean_df$Eq_Index]
+  clean_df$Exp_B <- exp(clean_df$Estimate_B)
+  
+  # Order the columns exactly as needed
+  final_data <- clean_df[, c("Equation", "Variable", "Estimate_B", "Std_Error", "Wald_z", "Sig", "Exp_B")]
+  
+  # Render table
+  final_table <- final_data %>%
+    group_by(Equation) %>%
+    gt() %>%
+    cols_label(
+      Variable = "Variável",
+      Estimate_B = "Coef. estimado",
+      Std_Error = "Erro padrão",
+      Wald_z = "Wald",
+      Sig = "Sig.",
+      Exp_B = "Exp(B)"
+    ) %>%
+    fmt_number(
+      columns = c(Estimate_B, Std_Error, Wald_z, Sig, Exp_B),
+      decimals = 3
+    ) %>%
+    tab_style(
+      style = cell_text(weight = "bold"),
+      locations = cells_body(columns = Sig, rows = Sig < 0.05)
+    ) %>%
+    tab_header(
+      title = md("**TABLE 4**"),
+      subtitle = "Modelo logit multinomial"
+    ) %>%
+    tab_options(
+      row_group.font.weight = "bold",
+      row_group.background.color = "#f0f0f0",
+      table.border.top.color = "black",
+      table.border.bottom.color = "black",
+      table_body.hlines.color = "lightgray"
+    )
+  
+  return(final_table)
+}
