@@ -36,6 +36,10 @@ svytable(~race + tenure_condition, pnadc_norte, Ntotal = 100)
 ```
 
 ```{r}
+svyby(~household_income, ~race, pnadc_norte, svymean, na.rm = TRUE)
+```
+
+```{r}
 svytable(~race, pnadc, Ntotal = 100)
 ```
 
