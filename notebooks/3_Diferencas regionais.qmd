@@ -53,3 +53,29 @@ Sem seleção no centro-oeste
 pnadc_centrooeste <- subset(pnadc, macroregion == "centro-oeste")
 svytable(~race, pnadc_centrooeste, Ntotal = 100)
 ```
+
+## Renda
+
+```{r}
+create_coef_table(post_lasso_sul)
+```
+
+```{r}
+create_coef_table(post_lasso_sudeste)
+```
+
+```{r}
+create_coef_table(post_lasso_centroeste)
+```
+
+```{r}
+create_coef_table(post_lasso_nordeste)
+```
+
+```{r}
+write.csv(create_coef_table(post_lasso_nordeste), "../outputs/coef_nordeste.csv")
+write.csv(create_coef_table(post_lasso_centroeste), "../outputs/coef_centroeste.csv")
+write.csv(create_coef_table(post_lasso_sul), "../outputs/coef_sul.csv")
+write.csv(create_coef_table(post_lasso_sudeste), "../outputs/coef_sudeste.csv")
+write.csv(create_coef_table(post_lasso_norte), "../outputs/coef_norte.csv")
+```

@@ -44,14 +44,18 @@ clean_select_vars_norte <- clean_lasso_names(select_vars_norte, relevant_variabl
 
 nordeste_coefs <- coef(regional_models[["nordeste"]], s = "lambda.1se")
 select_vars_nordeste <- get_selected_vars(nordeste_coefs)
+clean_select_vars_nordeste <- clean_lasso_names(select_vars_nordeste, relevant_variables)
 
 centroeste_coefs <- coef(regional_models[["centro-oeste"]], s = "lambda.1se")
 select_vars_centroeste <- get_selected_vars(centroeste_coefs)
+clean_select_vars_centroeste <- clean_lasso_names(select_vars_centroeste, relevant_variables)
 
 sudeste_coefs <- coef(regional_models[["sudeste"]], s = "lambda.1se")
 select_vars_sudeste <- get_selected_vars(sudeste_coefs)
+clean_select_vars_sudeste <- clean_lasso_names(select_vars_sudeste, relevant_variables)
 
 sul_coefs <- coef(regional_models[["sul"]], s = "lambda.1se")
 select_vars_sul <- get_selected_vars(sul_coefs)
+clean_select_vars_sul <- clean_lasso_names(select_vars_sul, relevant_variables)
 
 message("All coeficients extracted")

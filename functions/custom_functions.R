@@ -853,6 +853,17 @@ run_nested_cv <- function(design_obj, regression_variables, cluster_var,
 
 ## 2.2. INTERPRETATION -------------------------------------------------------------------------------------
 
+rescale_income_for_interpretation <- function(design_obj, divisor = 1000) {
+  
+  updated_design <- update(
+    design_obj,
+    household_income = household_income / divisor,
+    household_income_pcapita = household_income_pcapita / divisor
+  )
+  
+  return(updated_design)
+}
+
 create_matrix_national <- function(design_obj) {
   
   # Define preditors
