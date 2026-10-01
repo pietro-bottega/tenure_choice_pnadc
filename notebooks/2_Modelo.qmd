@@ -104,6 +104,57 @@ cat("Weighted Average of National Model on Regions: ", round(weighted_mean_natio
 cat("Weighted Average of Regional (Own) Models:    ", round(weighted_mean_regional, 4), "\n")
 ```
 
+```{r}
+# 1. Identify all unique macroregions from the saved predictions
+groups <- sort(unique(unlist(lapply(nested_cv_results_national$fold_details, function(x) x$group))))
+levels_all <- levels(factor(nested_cv_results_national$fold_details[[1]]$y_true))
+
+# 2. Reconstruct the fold_group_metrics table manually
+manual_fold_group_metrics <- do.call(rbind, lapply(nested_cv_results_national$fold_details, function(fr) {
+  do.call(rbind, lapply(groups, function(g) {
+    idx <- fr$group == g
+    if (sum(idx) > 0) {
+      cm <- weighted_class_metrics(fr$y_true[idx], fr$y_pred[idx], fr$w[idx], levels_all)
+      data.frame(fold = fr$fold, group = g, macro_f1 = mean(cm$f1), n = sum(idx))
+    } else {
+      NULL
+    }
+  }))
+}))
+
+# 3. Now use this manually constructed table for your comparison
+national_all_folds <- manual_fold_group_metrics[, c("fold", "group", "macro_f1")]
+colnames(national_all_folds) <- c("fold", "macroregion", "national_f1")
+
+# 4. Proceed with merging the regional results
+regional_all_folds <- do.call(rbind, lapply(names(regional_results), function(reg) {
+  data.frame(
+    macroregion = reg,
+    fold        = 1:10,
+    regional_f1 = regional_results[[reg]]$per_fold
+  )
+}))
+
+full_fold_comparison <- merge(national_all_folds, regional_all_folds, by = c("macroregion", "fold"))
+full_fold_comparison$f1_improvement <- full_fold_comparison$regional_f1 - full_fold_comparison$national_f1
+
+print(full_fold_comparison)
+```
+
+```{r}
+regional_win_summary <- full_fold_comparison %>%
+  group_by(macroregion) %>%
+  summarize(
+    regional_wins = sum(f1_improvement > 0, na.rm = TRUE),
+    national_wins = sum(f1_improvement < 0, na.rm = TRUE),
+    ties          = sum(f1_improvement == 0, na.rm = TRUE),
+    win_rate_pct  = (sum(f1_improvement > 0, na.rm = TRUE) / n()) * 100
+  ) %>%
+  arrange(desc(regional_wins))
+
+print(regional_win_summary)
+```
+
 #### Regionais: detalhes
 
 ```{r}

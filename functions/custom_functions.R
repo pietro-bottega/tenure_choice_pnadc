@@ -430,22 +430,47 @@ create_formula <- function(y, x) {
 
 # ----------------------------------------------------------------
 # 1. Cluster-respecting fold assignment
-#    force_train_ids: cluster IDs that should NEVER be selected as a
-#    held-out test fold -- they get fold value 0, which never matches
-#    any fold_i in 1:k, so `row_fold != fold_i` is always TRUE for them
-#    (always in training) and `row_fold == fold_i` is always FALSE
-#    (never in test). Use this for clusters containing the only
-#    occurrences of an extremely rare category: evaluating on n<10
-#    observations is statistically uninformative regardless of method,
-#    so nothing is lost by excluding them from test, while their
-#    contribution to model fitting is preserved in every fold.
 # ----------------------------------------------------------------
 create_cluster_folds <- function(design_obj, cluster_var, k = 10, seed = 123,
-                                 force_train_ids = NULL) {
-  set.seed(seed)
+                                 force_train_ids = NULL,
+                                 cluster_fold_map = NULL) {
   
   cluster_ids <- design_obj$variables[[cluster_var]]
   unique_clusters <- unique(cluster_ids)
+  
+  if (!is.null(cluster_fold_map)) {
+    missing_clusters <- setdiff(as.character(unique_clusters), names(cluster_fold_map))
+    if (length(missing_clusters) > 0) {
+      warning(sprintf(
+        "%d cluster(s) in this design have no entry in the supplied cluster_fold_map -- forcing them into training-only (fold 0), since no prior fold assignment exists for them.",
+        length(missing_clusters)
+      ))
+      extra_map <- setNames(rep(0, length(missing_clusters)), missing_clusters)
+      cluster_fold_map <- c(cluster_fold_map, extra_map)
+    }
+
+    if (!is.null(force_train_ids)) {
+      force_here <- as.character(unique_clusters)[
+        as.character(unique_clusters) %in% as.character(force_train_ids)
+      ]
+      if (length(force_here) > 0) {
+        cluster_fold_map[force_here] <- 0
+        message(sprintf(
+          "%d cluster(s) overridden to training-only (fold 0) via force_train_ids, on top of the supplied cluster_fold_map.",
+          length(force_here)
+        ))
+      }
+    }
+
+    row_fold <- unname(cluster_fold_map[as.character(cluster_ids)])
+    # Fold "0" here (if present) is the forced-training-only group, not a
+    # real evaluation fold.
+    print(table(row_fold))
+    attr(row_fold, "cluster_fold_map") <- cluster_fold_map
+    return(row_fold)
+  }
+  
+  set.seed(seed)
   
   is_forced <- as.character(unique_clusters) %in% as.character(force_train_ids)
   foldable_clusters <- unique_clusters[!is_forced]
@@ -467,6 +492,7 @@ create_cluster_folds <- function(design_obj, cluster_var, k = 10, seed = 123,
   # Fold "0" here (if present) is the forced-training-only group, not a
   # real evaluation fold.
   print(table(row_fold))
+  attr(row_fold, "cluster_fold_map") <- cluster_to_fold
   
   return(row_fold)
 }
@@ -644,10 +670,7 @@ run_fold_nested <- function(fold_i, row_fold, df, regression_variables,
   
   fold_formula <- create_formula(y_var, selected_clean)
   
-  # ---- Step B: refit multinomial on the selected variables, still
-  #      using the CLASS-ADJUSTED training weight -- this is the model
-  #      that actually gets to "see" the rebalanced classes while
-  #      learning coefficients.
+
   fit <- tryCatch(
     VGAM::vglm(fold_formula, data = train_df, weights = .wt_train,
                family = VGAM::multinomial(refLevel = 1)),
@@ -660,17 +683,6 @@ run_fold_nested <- function(fold_i, row_fold, df, regression_variables,
     return(NULL)
   }
   
-  # ---- Prediction is wrapped in tryCatch too: a rare category (e.g. a
-  #      residual code with only a handful of national/regional
-  #      observations) can have zero rows in this fold's training data
-  #      purely by chance, even after force_factor_levels() -- vglm
-  #      never learned that level exists, and predictvglm() errors the
-  #      moment the held-out fold contains it. Catching this here lets
-  #      the fold skip gracefully instead of crashing the whole run.
-  #      The force_train_ids mechanism in create_cluster_folds() is the
-  #      preferred fix (prevents this from happening at all for known
-  #      rare-category clusters); this tryCatch is the safety net for
-  #      anything not pre-emptively handled that way.
   pred_probs <- tryCatch(
     VGAM::predictvglm(fit, newdata = test_df, type = "response"),
     error = function(e) e
@@ -688,10 +700,6 @@ run_fold_nested <- function(fold_i, row_fold, df, regression_variables,
     pred_class <- levels_all[apply(pred_probs, 1, which.max)]
   }
   
-  # ---- Evaluation uses test_df$.wt -- the ORIGINAL, UNADJUSTED survey
-  #      weight. Reported Macro-F1 / confusion matrices therefore still
-  #      represent the true population, even though training used a
-  #      class-adjusted weight.
   class_metrics <- weighted_class_metrics(
     y_true     = test_df[[y_var]],
     y_pred     = pred_class,
@@ -716,19 +724,15 @@ run_fold_nested <- function(fold_i, row_fold, df, regression_variables,
 }
 
 # ----------------------------------------------------------------
-# 4. Full nested pipeline -- national model, no macroregion split
-#    force_train_ids: passed straight through to create_cluster_folds()
-#    -- see its comments above. Use this for clusters holding the only
-#    occurrences of an extremely rare category (e.g. race == "9" with
-#    n = 1-8), so they always contribute to training but are never
-#    relied upon for evaluation.
+# 4. Full nested pipeline 
 # ----------------------------------------------------------------
 run_nested_cv <- function(design_obj, regression_variables, cluster_var,
                           y_var = "tenure_condition",
                           k = 10, seed = 123, inner_nfolds = 10,
                           levels_all_override = NULL,
                           force_train_ids = NULL,
-                          group_var = NULL) {
+                          group_var = NULL,
+                          cluster_fold_map = NULL) {
   
   df <- design_obj$variables
   weight_var <- ".sampling_weight"
@@ -744,7 +748,8 @@ run_nested_cv <- function(design_obj, regression_variables, cluster_var,
   df <- apply_factor_levels(df, level_map)
   
   row_fold <- create_cluster_folds(design_obj, cluster_var, k = k, seed = seed,
-                                   force_train_ids = force_train_ids)
+                                   force_train_ids = force_train_ids,
+                                   cluster_fold_map = cluster_fold_map)
   
   fold_results <- vector("list", k)
   for (i in seq_len(k)) {
@@ -843,10 +848,12 @@ run_nested_cv <- function(design_obj, regression_variables, cluster_var,
     class_table             = class_table,
     selection_freq          = selection_freq,
     class_multiplier_table  = class_multiplier_table,
-    confusion_matrix        = confusion_matrix,      # built from ORIGINAL weights
-    confusion_matrix_pct    = confusion_matrix_pct,  # row-normalized, % of true population
-    by_group_macro_f1       = by_group_macro_f1,     # out-of-sample macro-F1 per group_var value
-    fold_details            = fold_results
+    confusion_matrix        = confusion_matrix,      
+    confusion_matrix_pct    = confusion_matrix_pct,  
+    by_group_macro_f1       = by_group_macro_f1,     
+    cluster_fold_map        = attr(row_fold, "cluster_fold_map"),  
+    fold_details            = fold_results,
+    fold_group_metrics      = fold_group_metrics
   )
 }
 

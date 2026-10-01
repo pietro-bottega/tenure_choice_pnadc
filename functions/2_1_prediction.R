@@ -45,8 +45,10 @@ nested_cv_results_national <- run_nested_cv(
   cluster_var           = "UPA",
   group_var             = "macroregion",
   k = 10,
-  inner_nfolds = 10
+  seed = 123
 )
+
+national_fold_map <- nested_cv_results_national$cluster_fold_map
 
 # Regional
 
@@ -66,7 +68,8 @@ for (reg in regions) {
     cluster_var          = "UPA",
     y_var                = "tenure_condition",
     levels_all_override  = levels_all_national,
-    force_train_ids = force_ids_reg,
+    cluster_fold_map      = national_fold_map,
+    force_train_ids       = force_ids_reg,
     k    = 10,
     seed = 123
   )
