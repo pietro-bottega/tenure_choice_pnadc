@@ -328,6 +328,10 @@ table_race <- svytable(~race, pnadc)
 table_race
 ```
 
+```{r}
+table(pnadc$variables$race, useNA = "always")
+```
+
 #### VD4009: Posição na ocupação e categoria do emprego (Status no mercado de trabalho)
 
 |  |  |  |
