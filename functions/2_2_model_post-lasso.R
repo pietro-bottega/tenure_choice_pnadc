@@ -13,6 +13,11 @@ source(here("functions","custom_functions.R"))
 
 pnadc <- rescale_income_for_interpretation(pnadc)
 
+pnadc <- update(
+  pnadc,
+  single_mom = relevel(as.factor(single_mom), ref = "nao_mae_solteira")
+)
+
 # 1. POST LASSO FOR NATIONAL MODEL 
 
 formula_national <- create_formula(
