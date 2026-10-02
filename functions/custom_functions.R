@@ -879,6 +879,8 @@ create_matrix_national <- function(design_obj) {
   # Use the dataframe
   pnadc_df <- design_obj$variables
   
+  pnadc_df$single_mom <- relevel(as.factor(pnadc_df$single_mom), ref = "nao_mae_solteira")
+  
   Y <- pnadc_df$tenure_condition # dependent variables
   X <- pnadc_df[, regression_variables] # predictors
   pnadc_weights <- weights(design_obj, "sampling") # weights
@@ -911,6 +913,8 @@ create_matrix_regional <- function(subset_df) {
   
   # Define preditors
   regression_variables <- c("age", "race", "household_size", "family_structure", "household_income", "household_income_pcapita", "education_years", "wealth_index", "head_dependency", "worker_status", "single_mom", "metropolitan_area")
+  
+  subset_df$single_mom <- relevel(as.factor(subset_df$single_mom), ref = "nao_mae_solteira")
   
   Y <- subset_df$tenure_condition # dependent variables
   X <- subset_df[, regression_variables] # predictors
