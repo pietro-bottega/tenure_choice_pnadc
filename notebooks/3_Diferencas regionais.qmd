@@ -9,7 +9,8 @@ format: html
 library(here)
 library(glmnet)
 library(svyVGAM)
-library(PNADcIBGE) 
+library(PNADcIBGE)
+library(srvyr)
 library(survey) 
 library(dplyr) 
 library(tidyr) 
@@ -23,6 +24,12 @@ source(here("functions","0_data_viz.R"))
 ```
 
 ## Discriminação racial
+
+Estabilidade de seleção da variável:
+
+```{r}
+regional_results[["norte"]]$selection_freq_raw
+```
 
 Seleção de raça ou cor pardo na região Norte
 
@@ -47,6 +54,12 @@ svytable(~race, pnadc, Ntotal = 100)
 create_coef_table(post_lasso_norte)
 ```
 
+Raça por localização
+
+```{r}
+svytable(~race + metropolitan_area, pnadc_norte)
+```
+
 Sem seleção no centro-oeste
 
 ```{r}
@@ -55,6 +68,105 @@ svytable(~race, pnadc_centrooeste, Ntotal = 100)
 ```
 
 ## Renda
+
+```{r}
+svytable(~tenure_condition + S01017, pnadc, round = TRUE)
+```
+
+```{r}
+pnadc_propformal <- subset(pnadc, tenure_condition == "proprietario_formal")
+tbl <- svytable(~macroregion + S01017, pnadc_propformal, round = TRUE)
+tbl_porcentagem_linha <- round(prop.table(tbl, margin = 1) * 100, digits = 1)
+tbl_porcentagem_linha
+```
+
+```{r}
+pnadc_financing <- subset(pnadc, S01017 == 2 & tenure_condition == "proprietario_formal")
+```
+
+```{r}
+# 1. Converter o objeto de survey mantendo a integridade
+design_tidy <- as_survey(pnadc_financing)
+
+# 2. Categorizar, ordenar as faixas do MCMV e calcular os percentuais
+tabela_mcmv_regiao <- design_tidy %>%
+  mutate(
+    faixa_mcmv_texto = case_when(
+      household_income <= 2850 ~ "Faixa 1",
+      household_income > 2850 & household_income <= 4700 ~ "Faixa 2",
+      household_income > 4700 & household_income <= 8600 ~ "Faixa 3",
+      household_income > 8600 ~ "Acima da Faixa 3",
+      TRUE ~ "Ignorado"
+    ),
+    faixa_mcmv = factor(faixa_mcmv_texto, levels = c(
+      "Acima da Faixa 3",
+      "Faixa 3",
+      "Faixa 2",
+      "Faixa 1",
+      "Ignorado"
+    ))
+  ) %>%
+  group_by(macroregion, faixa_mcmv) %>%
+  summarize(
+    domicilios_estimados = survey_total(na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  group_by(macroregion) %>%
+  mutate(
+    percentual_na_regiao = (domicilios_estimados / sum(domicilios_estimados)) * 100
+  ) %>%
+  ungroup()
+
+# 3. Construir o gráfico 100% Stacked Column com legenda no canto inferior direito
+grafico_mcmv <- ggplot(tabela_mcmv_regiao, aes(x = macroregion, y = percentual_na_regiao, fill = faixa_mcmv)) +
+  geom_col() + 
+  
+  geom_text(
+    aes(label = sprintf("%.1f%%", percentual_na_regiao)), 
+    position = position_stack(vjust = 0.5),
+    color = "white",                        
+    size = 3
+  ) +
+  
+  scale_fill_manual(
+    values = c(
+      "Faixa 1" = "#2066a8", 
+      "Faixa 2" = "#3594cc", 
+      "Faixa 3" = "#8cc5e3", 
+      "Acima da Faixa 3" = "#A0A0A0",
+      "Ignorado" = "#E0E0E0"
+    )
+  ) +
+  labs(
+    x = NULL,
+    y = "População projetada (%)",
+    fill = "Faixas de renda (PMCMV)"
+  ) +
+  theme_minimal() +
+  theme(
+    # Moves legend below the plot area
+    legend.position = "right",
+
+    legend.text = element_text(size = 11),
+    axis.title = element_text(size = 13),
+    axis.text = element_text(size = 11),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+print(grafico_mcmv)
+
+ggsave(
+  filename = "../outputs/chart_mcmv.png", 
+  plot = grafico_mcmv,
+  width = 11,      # Increase this value to stretch the chart area
+  height = 5,      # Keep height standard to create a widescreen aspect ratio
+  dpi = 300,       # High resolution for publications
+  bg = "white"     # Ensures a white background
+)
+```
+
+## Tabelas regionais
 
 ```{r}
 create_coef_table(post_lasso_sul)

@@ -191,7 +191,7 @@ build_wealth_index <- function(design_obj) {
            # Drop the raw housing/durable goods variables you no longer need
            -S01023, -S01024, -S01025, -S01028, -S01029, -S01031, 
            -S01011A, -S01002, -S01003, -S01012A, -S01014, 
-           -S01010, -S01005, -V2001, -S01017, -S01020, -S01020A)
+           -S01010, -S01005, -V2001, -S01020, -S01020A)
   
   # 5. REASSIGN AND CLEAN UP ---
   # Put the mutated data back into the survey design object safely
@@ -712,6 +712,7 @@ run_fold_nested <- function(fold_i, row_fold, df, regression_variables,
     n_train             = nrow(train_df),
     n_test              = nrow(test_df),
     selected_vars       = selected_clean,
+    selected_vars_raw   = selected_raw,
     lambda_1se          = lasso_fit$lambda.1se,
     class_multiplier    = class_w$multiplier_raw,  # per-class multiplier used THIS fold
     macro_f1            = mean(class_metrics$f1),
@@ -792,6 +793,13 @@ run_nested_cv <- function(design_obj, regression_variables, cluster_var,
   selection_freq <- selection_freq[order(-selection_freq$times_selected), ]
   rownames(selection_freq) <- NULL
   
+  all_selected_raw <- unlist(lapply(fold_results, function(x) x$selected_vars_raw))
+  selection_freq_raw <- as.data.frame(table(all_selected_raw))
+  names(selection_freq_raw) <- c("variable_raw", "times_selected")
+  selection_freq_raw$out_of_k <- length(fold_results)
+  selection_freq_raw <- selection_freq_raw[order(-selection_freq_raw$times_selected), ]
+  rownames(selection_freq_raw) <- NULL
+  
   # ---- per-fold class multipliers, so the write-up can report how
   #      much the class rebalancing varied depending on which 90% of the
   #      sample was used to compute it (transparency check, same spirit
@@ -847,13 +855,14 @@ run_nested_cv <- function(design_obj, regression_variables, cluster_var,
     per_fold                = macro_f1_by_fold,
     class_table             = class_table,
     selection_freq          = selection_freq,
+    selection_freq_raw      = selection_freq_raw,
     class_multiplier_table  = class_multiplier_table,
     confusion_matrix        = confusion_matrix,      
     confusion_matrix_pct    = confusion_matrix_pct,  
     by_group_macro_f1       = by_group_macro_f1,     
     cluster_fold_map        = attr(row_fold, "cluster_fold_map"),  
     fold_details            = fold_results,
-    fold_group_metrics      = fold_group_metrics
+    fold_group_metrics      = if (!is.null(group_var)) fold_group_metrics else NULL
   )
 }
 

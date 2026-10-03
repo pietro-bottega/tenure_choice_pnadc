@@ -66,6 +66,9 @@ cols_unused <- c("V1022", "V1023", "V2003", "V2005", "V2007",
                  "VD4046_real", "S01001",
                  "CO1", "CO1e", "CO2", "CO2e", "CO3", "bath_ratio",
                  "V5004A", "VD4001", "VD4002")
+                  #"S01017")
+
+# Drop S01017 to run all models, but can be kept in order to analyze income MCMV (paying/already paid)
 
 pnadc <- drop_variables(pnadc, cols_unused)
 
