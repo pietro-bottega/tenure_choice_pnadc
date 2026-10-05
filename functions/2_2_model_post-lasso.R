@@ -55,70 +55,70 @@ post_lasso_norte <- suppressWarnings(
   )
 )
 
-# # 2.2. NORDESTE
-# 
-# pnadc_nordeste <- subset(pnadc, macroregion == "nordeste")
-# 
-# formula_nordeste <- create_formula(
-#   y = "tenure_condition",
-#   x = clean_select_vars_nordeste
-# )
-# 
-# post_lasso_nordeste <- suppressWarnings(
-#   svy_vglm(
-#     formula = formula_nordeste,
-#     design = pnadc_nordeste,
-#     family = multinomial(refLevel = 1)
-#   )
-# )
-# 
-# # 2.3. SUDESTE
-# 
-# pnadc_sudeste <- subset(pnadc, macroregion == "sudeste")
-# 
-# formula_sudeste <- create_formula(
-#   y = "tenure_condition",
-#   x = clean_select_vars_sudeste
-# )
-# 
-# post_lasso_sudeste <- suppressWarnings(
-#   svy_vglm(
-#     formula = formula_sudeste,
-#     design = pnadc_sudeste,
-#     family = multinomial(refLevel = 1)
-#   )
-# )
-# 
-# # 2.4. SUL
-# 
-# pnadc_sul <- subset(pnadc, macroregion == "sul")
-# 
-# formula_sul <- create_formula(
-#   y = "tenure_condition",
-#   x = clean_select_vars_sul
-# )
-# 
-# post_lasso_sul <- suppressWarnings(
-#   svy_vglm(
-#     formula = formula_sul,
-#     design = pnadc_sul,
-#     family = multinomial(refLevel = 1)
-#   )
-# )
-# 
-# # 2.4. CENTROESTE
-# 
-# pnadc_centroeste <- subset(pnadc, macroregion == "centro-oeste")
-# 
-# formula_centroeste <- create_formula(
-#   y = "tenure_condition",
-#   x = clean_select_vars_centroeste
-# )
-# 
-# post_lasso_centroeste <- suppressWarnings(
-#   svy_vglm(
-#     formula = formula_centroeste,
-#     design = pnadc_centroeste,
-#     family = multinomial(refLevel = 1)
-#   )
-# )
+# 2.2. NORDESTE
+
+pnadc_nordeste <- subset(pnadc, macroregion == "nordeste")
+
+formula_nordeste <- create_formula(
+  y = "tenure_condition",
+  x = clean_select_vars_nordeste
+)
+
+post_lasso_nordeste <- suppressWarnings(
+  svy_vglm(
+    formula = formula_nordeste,
+    design = pnadc_nordeste,
+    family = multinomial(refLevel = 1)
+  )
+)
+
+# 2.3. SUDESTE
+
+pnadc_sudeste <- subset(pnadc, macroregion == "sudeste")
+
+formula_sudeste <- create_formula(
+  y = "tenure_condition",
+  x = clean_select_vars_sudeste
+)
+
+post_lasso_sudeste <- suppressWarnings(
+  svy_vglm(
+    formula = formula_sudeste,
+    design = pnadc_sudeste,
+    family = multinomial(refLevel = 1)
+  )
+)
+
+# 2.4. SUL
+
+pnadc_sul <- subset(pnadc, macroregion == "sul")
+
+formula_sul <- create_formula(
+  y = "tenure_condition",
+  x = clean_select_vars_sul
+)
+
+post_lasso_sul <- suppressWarnings(
+  svy_vglm(
+    formula = formula_sul,
+    design = pnadc_sul,
+    family = multinomial(refLevel = 1)
+  )
+)
+
+# 2.4. CENTROESTE
+
+pnadc_centroeste <- subset(pnadc, macroregion == "centro-oeste")
+
+formula_centroeste <- create_formula(
+  y = "tenure_condition",
+  x = clean_select_vars_centroeste
+)
+
+post_lasso_centroeste <- suppressWarnings(
+  svy_vglm(
+    formula = formula_centroeste,
+    design = pnadc_centroeste,
+    family = multinomial(refLevel = 1)
+  )
+)

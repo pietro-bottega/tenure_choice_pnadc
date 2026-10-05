@@ -222,6 +222,19 @@ cv_comparison <- rbind(cv_sul, cv_sudeste)
 print(cv_comparison)
 ```
 
+## Mercado de trabalho
+
+```{r}
+tbl_worker <- svytable(~macroregion + worker_status, pnadc, round = TRUE)
+tbl_porcentagem_linha_worker <- round(prop.table(tbl_worker, margin = 1) * 100, digits = 1)
+tbl_porcentagem_linha_worker
+```
+
+```{r}
+tbl_worker_br <- svytable(~worker_status, pnadc, Ntotal = 100)
+tbl_worker_br
+```
+
 ## Tabelas regionais
 
 ```{r}
