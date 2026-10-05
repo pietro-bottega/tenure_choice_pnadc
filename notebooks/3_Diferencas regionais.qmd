@@ -238,6 +238,209 @@ tbl_worker_br
 ## Tabelas regionais
 
 ```{r}
+## =================================================================
+## Build a table of Exp(B) (odds ratios), split into sections by
+## tenure_condition category, with all variables listed under each
+## section -- one block for morador_informal, one for proprietario_formal
+## (or whichever non-reference categories the model actually has).
+## =================================================================
+## NOTE on suffix mapping: VGAM multinomial coefficient names look like
+## "age:1", "age:2" -- these numeric suffixes correspond to the model's
+## internal linear-predictor order, NOT necessarily the order you'd
+## guess from eyeballing level labels. Rather than assume an order, this
+## function reads it directly from fitted(model)'s column names (the
+## same category names/order already verified via colnames(pred_probs)
+## elsewhere in this pipeline), dropping the reference category to get
+## the correct suffix -> category mapping.
+
+build_exp_b_table_by_category <- function(model_list, digits = 3) {
+  
+  # ---- Derive suffix -> category mapping from the FIRST model, then
+  #      verify every other model agrees (they should, since all were
+  #      fit on the same tenure_condition categories).
+  get_category_order <- function(model) {
+    fv <- fitted(model)
+    colnames(fv)
+  }
+  
+  ref_model <- model_list[[1]]
+  all_categories <- get_category_order(ref_model)
+  
+  for (region in names(model_list)[-1]) {
+    this_categories <- get_category_order(model_list[[region]])
+    if (!identical(this_categories, all_categories)) {
+      warning(sprintf(
+        "Category order for '%s' (%s) differs from '%s' (%s) -- check whether all regional models were fit on the same tenure_condition factor levels.",
+        region, paste(this_categories, collapse = ", "),
+        names(model_list)[1], paste(all_categories, collapse = ", ")
+      ))
+    }
+  }
+  
+  # The reference category has NO coefficient/suffix of its own -- the
+  # remaining categories, in order, correspond to suffix 1, 2, ... in
+  # the coefficient names.
+  coef_names_ref <- names(coef(ref_model))
+  suffixes_used  <- sort(unique(as.integer(sub(".*:([0-9]+)$", "\\1", coef_names_ref))))
+  non_ref_categories <- setdiff(all_categories, NA)  # placeholder, replaced below
+  
+  # Identify the reference category: the one NOT implied by any suffix.
+  # Safer approach: VGAM lists non-reference categories in the same
+  # order as `all_categories` with the reference one removed -- but
+  # since we don't know a priori WHICH is the reference from fitted()
+  # alone, infer it from the model's own refLevel if available.
+  ref_level_idx <- tryCatch(ref_model@misc$refLevel, error = function(e) NULL)
+  if (is.null(ref_level_idx)) ref_level_idx <- 1  # VGAM default
+  non_ref_categories <- all_categories[-ref_level_idx]
+  
+  message("Suffix -> category mapping used:")
+  for (i in seq_along(non_ref_categories)) {
+    message(sprintf("  :%d  ->  %s", i, non_ref_categories[i]))
+  }
+  message(sprintf("(Reference category: %s)", all_categories[ref_level_idx]))
+  
+  # ---- Helper: strip the ":N" suffix to get the base variable name
+  base_name <- function(x) sub(":[0-9]+$", "", x)
+  suffix_num <- function(x) as.integer(sub(".*:([0-9]+)$", "\\1", x))
+  
+  all_vars_full <- unique(unlist(lapply(model_list, function(m) names(coef(m)))))
+  all_base_vars <- unique(base_name(all_vars_full))
+  
+  build_block <- function(suffix_n, category_label) {
+    block <- data.frame(tenure_condition = category_label,
+                        Variable = all_base_vars, stringsAsFactors = FALSE)
+    for (region in names(model_list)) {
+      model <- model_list[[region]]
+      cn    <- names(coef(model))
+      exp_b <- exp(coef(model))
+      
+      keep <- suffix_num(cn) == suffix_n & !is.na(suffix_num(cn))
+      sub_names <- base_name(cn[keep])
+      sub_vals  <- exp_b[keep]
+      
+      matched <- sub_vals[match(block$Variable, sub_names)]
+      block[[region]] <- round(unname(matched), digits)
+    }
+    block
+  }
+  
+  blocks <- lapply(seq_along(non_ref_categories), function(i) {
+    build_block(i, non_ref_categories[i])
+  })
+  
+  result <- do.call(rbind, blocks)
+  rownames(result) <- NULL
+  result
+}
+```
+
+```{r}
+model_list <- list(
+  "Norte"        = post_lasso_norte,
+  "Nordeste"     = post_lasso_nordeste,
+  "Sudeste"      = post_lasso_sudeste,
+  "Sul"          = post_lasso_sul,
+  "Centro-Oeste" = post_lasso_centroeste
+)
+
+exp_b_table <- build_exp_b_table_by_category(model_list)
+
+# To get morador_informal's section first, proprietario_formal second
+# (or whatever order you want), reorder the tenure_condition factor:
+exp_b_table$tenure_condition <- factor(
+  exp_b_table$tenure_condition,
+  levels = c("morador_informal", "proprietario_formal")
+)
+exp_b_table <- exp_b_table[order(exp_b_table$tenure_condition), ]
+
+View(exp_b_table)
+knitr::kable(exp_b_table, digits = 2)
+```
+
+```{r}
+# 1. Defina o vetor com os nomes exatos das suas regiões
+regions <- c("norte", "nordeste", "sudeste", "sul", "centroeste")
+
+# 2. Extraia os níveis reais da variável dependente para nomear as seções automaticamente[cite: 1]
+niveis_estimados <- levels(pnadc$variables$tenure_condition)[-1]
+
+# 3. Criar um data.frame vazio para empilhar os resultados de todas as regiões
+all_regions_df <- data.frame()
+
+for (reg in regions) {
+  # Chama o objeto do modelo regional da memória dinamicamente (ex: post_lasso_Norte)
+  mod_name <- paste0("post_lasso_", reg)
+  mod <- get(mod_name)
+  mod_sum <- summary(mod)
+  
+  # Extração estrutural blindada da matriz do modelo svyVGAM[cite: 1]
+  if ("coeftable" %in% names(mod_sum)) {
+    raw_matrix <- mod_sum$coeftable
+  } else if ("coefficients" %in% names(mod_sum)) {
+    raw_matrix <- mod_sum$coefficients
+  } else if ("coef3" %in% names(mod_sum)) {
+    raw_matrix <- mod_sum$coef3
+  } else {
+    raw_matrix <- as.matrix(mod_sum)
+  }
+  
+  # Cria a tabela temporária extraindo apenas o Estimate_B (Coluna 1)
+  temp_df <- data.frame(
+    Term = rownames(raw_matrix),
+    Estimate_B = as.numeric(raw_matrix[, 1]),
+    stringsAsFactors = FALSE
+  )
+  
+  # Calcula o Odds Ratio (Exp(B)) e marca a qual região esses dados pertencem
+  temp_df$Exp_B <- exp(temp_df$Estimate_B)
+  temp_df$Region <- reg
+  
+  # Empilha na tabela principal
+  all_regions_df <- rbind(all_regions_df, temp_df)
+}
+
+# 4. Limpeza dos termos e mapeamento para as categorias de moradia
+all_regions_df$Variable <- sub(":.*", "", all_regions_df$Term)
+all_regions_df$Eq_Index <- as.numeric(sub(".*:", "", all_regions_df$Term))
+
+# Traduz o índice numérico da equação para o nome real da categoria (ex: "Morador informal")[cite: 1]
+all_regions_df$Category <- niveis_estimados[all_regions_df$Eq_Index]
+
+# 5. Pivotar a tabela (Variáveis nas linhas, Regiões nas colunas)
+table_wide <- all_regions_df %>%
+  select(Category, Variable, Region, Exp_B) %>%
+  pivot_wider(
+    names_from = Region,
+    values_from = Exp_B
+  )
+
+# 6. Gerar a tabela acadêmica com o pacote gt
+final_table <- table_wide %>%
+  # Agrupa pelas categorias de moradia para criar as seções (Category)
+  group_by(Category) %>%
+  gt() %>%
+  # Formata os números de todas as colunas regionais para 3 casas decimais
+  fmt_number(
+    columns = all_of(regions),
+    decimals = 3
+  ) %>%
+  tab_header(
+    title = md("**TABLE 5**"),
+    subtitle = "Odds Ratios (Exp(B)) by Region and Tenure Choice"
+  ) %>%
+  tab_options(
+    row_group.font.weight = "bold",
+    row_group.background.color = "#f0f0f0",
+    table.border.top.color = "black",
+    table.border.bottom.color = "black",
+    table_body.hlines.color = "lightgray"
+  )
+
+# Visualizar a tabela
+final_table
+```
+
+```{r}
 create_coef_table(post_lasso_sul)
 ```
 
