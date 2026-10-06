@@ -222,6 +222,263 @@ cv_comparison <- rbind(cv_sul, cv_sudeste)
 print(cv_comparison)
 ```
 
+### Testes
+
+```{r}
+# ------------------------------------------------------------------
+# 0. Helper functions
+# ------------------------------------------------------------------
+
+# Survey-weighted Pearson correlation. Works for continuous-continuous
+# or continuous-binary (point-biserial) pairs, since a 0/1 dummy is
+# just a numeric variable for this purpose.
+svy_cor <- function(design_obj, var1, var2) {
+  form <- as.formula(paste0("~", var1, " + ", var2))
+  cov_mat <- as.matrix(survey::svyvar(form, design_obj, na.rm = TRUE))
+  cov_mat[var1, var2] / sqrt(cov_mat[var1, var1] * cov_mat[var2, var2])
+}
+
+# Survey-weighted bivariate regression -- gives a proper design-based
+# estimate, SE and p-value alongside the raw correlation coefficient.
+# family = gaussian() for a continuous outcome (e.g. income as DV);
+# family = quasibinomial() for a binary outcome (e.g. ownership as DV).
+svy_bivariate_test <- function(design_obj, outcome, predictor, family = gaussian()) {
+  form <- as.formula(paste0(outcome, " ~ ", predictor))
+  fit <- survey::svyglm(form, design = design_obj, family = family)
+  s <- summary(fit)
+  row <- s$coefficients[predictor, , drop = FALSE]
+  data.frame(
+    outcome   = outcome,
+    predictor = predictor,
+    estimate  = row[1, "Estimate"],
+    std_error = row[1, "Std. Error"],
+    p_value   = row[1, ncol(row)]
+  )
+}
+
+# ------------------------------------------------------------------
+# 1. Build the binary indicators once, on the full design
+#    -- adjust variable/level names here if yours differ
+# ------------------------------------------------------------------
+pnadc <- update(
+  pnadc,
+  is_formal_owner           = as.numeric(tenure_condition == "proprietario_formal"),
+  status_empregador         = as.numeric(worker_status == "empregador"),
+  status_informal           = as.numeric(worker_status == "informal"),
+  status_nao_ocupado        = as.numeric(worker_status == "nao_ocupado"),
+  status_servidor_publico   = as.numeric(worker_status == "servidor_publico"),
+  status_trabalhador_formal = as.numeric(worker_status == "trabalhador_formal")
+)
+
+worker_dummies <- c(
+  "status_empregador", "status_informal", "status_nao_ocupado",
+  "status_servidor_publico", "status_trabalhador_formal"
+)
+
+regions <- c("norte", "nordeste", "sudeste", "sul", "centro-oeste")
+
+# ------------------------------------------------------------------
+# 2. Renda x Propriedade formal, por região
+# ------------------------------------------------------------------
+income_ownership_results <- do.call(rbind, lapply(regions, function(r) {
+  reg_design <- subset(pnadc, macroregion == r)
+  
+  cor_val <- svy_cor(reg_design, "household_income", "is_formal_owner")
+  test_val <- svy_bivariate_test(
+    reg_design,
+    outcome   = "is_formal_owner",
+    predictor = "household_income",
+    family    = quasibinomial()   # binary outcome -> logistic
+  )
+  
+  data.frame(
+    regiao                        = r,
+    correlacao_renda_propriedade  = cor_val,
+    logit_estimate                = test_val$estimate,
+    logit_p_value                 = test_val$p_value
+  )
+}))
+
+print(income_ownership_results)
+
+# ------------------------------------------------------------------
+# 3. Renda x cada dummy de status de trabalho, por região
+# ------------------------------------------------------------------
+income_worker_status_results <- do.call(rbind, lapply(regions, function(r) {
+  reg_design <- subset(pnadc, macroregion == r)
+  
+  do.call(rbind, lapply(worker_dummies, function(dummy_var) {
+    cor_val <- svy_cor(reg_design, "household_income", dummy_var)
+    test_val <- svy_bivariate_test(
+      reg_design,
+      outcome   = "household_income",
+      predictor = dummy_var,
+      family    = gaussian()      # continuous outcome -> linear
+    )
+    data.frame(
+      regiao     = r,
+      status     = dummy_var,
+      correlacao = cor_val,
+      estimate   = test_val$estimate,
+      p_value    = test_val$p_value
+    )
+  }))
+}))
+
+print(income_worker_status_results)
+```
+
+```{r}
+wealth_ownership_results <- do.call(rbind, lapply(regions, function(r) {
+  reg_design <- subset(pnadc, macroregion == r)
+  
+  cor_val <- svy_cor(reg_design, "wealth_index", "is_formal_owner")
+  test_val <- svy_bivariate_test(
+    reg_design,
+    outcome   = "is_formal_owner",
+    predictor = "wealth_index",
+    family    = quasibinomial()   # binary outcome -> logistic
+  )
+  
+  data.frame(
+    regiao                        = r,
+    correlacao_riqueza_propriedade  = cor_val,
+    logit_estimate                = test_val$estimate,
+    logit_p_value                 = test_val$p_value
+  )
+}))
+
+print(wealth_ownership_results)
+```
+
+```{r}
+worker_status_ownership_results <- do.call(rbind, lapply(regions, function(r) {
+  reg_design <- subset(pnadc, macroregion == r)
+  
+  do.call(rbind, lapply(worker_dummies, function(dummy_var) {
+    
+    cor_val <- svy_cor(reg_design, dummy_var, "is_formal_owner")
+    
+    test_val <- svy_bivariate_test(
+      reg_design,
+      outcome   = "is_formal_owner",
+      predictor = dummy_var,
+      family    = quasibinomial()   # outcome binário -> logística
+    )
+    
+    data.frame(
+      regiao      = r,
+      status      = dummy_var,
+      correlacao  = cor_val,
+      logit_estimate = test_val$estimate,
+      logit_p_value  = test_val$p_value
+    )
+  }))
+}))
+
+print(worker_status_ownership_results)
+```
+
+```{r}
+# ------------------------------------------------------------------
+# 1. Build the three-state outcome: inquilino_formal (base),
+#    proprietario_financiando, proprietario_quitado.
+#    Morador_informal is dropped -- not relevant to this specific contrast.
+#    Adjust `house_payment_status` and its level labels to match your data.
+# ------------------------------------------------------------------
+pnadc <- update(
+  pnadc,
+  tenure_detailed = dplyr::case_when(
+    tenure_condition == "inquilino_formal" ~ "inquilino_formal",
+    tenure_condition == "proprietario_formal" & S01017 == 2 ~ "proprietario_financiando",
+    tenure_condition == "proprietario_formal" & S01017 == 1      ~ "proprietario_quitado",
+    TRUE ~ NA_character_
+  )
+)
+
+# Drop rows outside the three states of interest (morador_informal, NAs)
+pnadc_three_state <- subset(pnadc, !is.na(tenure_detailed))
+
+# Set inquilino_formal as refLevel = 1 via explicit factor level order
+pnadc_three_state <- update(
+  pnadc_three_state,
+  tenure_detailed = factor(
+    tenure_detailed,
+    levels = c("inquilino_formal", "proprietario_financiando", "proprietario_quitado")
+  )
+)
+
+# ------------------------------------------------------------------
+# 2. Fit a bivariate multinomial logit (tenure_detailed ~ household_income)
+#    per region -- single estimation, base = inquilino_formal, giving two
+#    simultaneous contrasts: financiando-vs-inquilino and quitado-vs-inquilino.
+# ------------------------------------------------------------------
+fit_income_tenure_detailed <- function(design_obj, region_label) {
+  
+  reg_design <- subset(design_obj, macroregion == region_label)
+  
+  fit <- svyVGAM::svy_vglm(
+    formula = tenure_detailed ~ household_income,
+    design  = reg_design,
+    family  = VGAM::multinomial(refLevel = 1)
+  )
+  
+  s <- summary(fit)
+  
+  # Same fallback chain used for post_lasso_national -- different VGAM/
+  # svyVGAM versions and fit types name the coefficient table differently.
+  if ("coeftable" %in% names(s)) {
+    raw_matrix <- s$coeftable
+  } else if ("coef3" %in% names(s)) {
+    raw_matrix <- s$coef3
+  } else if ("coefficients" %in% names(s)) {
+    raw_matrix <- s$coefficients
+  } else {
+    raw_matrix <- as.matrix(s)
+  }
+  
+  if (nrow(raw_matrix) == 0) {
+    stop("Coefficient table came back empty for region: ", region_label,
+         " -- check convergence (likely too few 'financiando' observations) ",
+         "or inspect str(s) directly.")
+  }
+  
+  data.frame(
+    regiao    = region_label,
+    term      = rownames(raw_matrix),
+    estimate  = as.numeric(raw_matrix[, 1]),
+    std_error = as.numeric(raw_matrix[, 2]),
+    p_value   = as.numeric(raw_matrix[, 4]),
+    exp_b     = exp(as.numeric(raw_matrix[, 1]))
+  )
+}
+
+regions <- c("norte", "nordeste", "sudeste", "sul", "centro-oeste")
+
+income_tenure_detailed_results <- do.call(
+  rbind,
+  lapply(regions, fit_income_tenure_detailed, design_obj = pnadc_three_state)
+)
+
+# ------------------------------------------------------------------
+# 3. Label which equation (contrast) each coefficient belongs to, the
+#    same way you resolved this for the main Post-LASSO model earlier.
+# ------------------------------------------------------------------
+income_tenure_detailed_results$Variable <- sub(":.*", "", income_tenure_detailed_results$term)
+income_tenure_detailed_results$Eq_Index <- as.numeric(sub(".*:", "", income_tenure_detailed_results$term))
+income_tenure_detailed_results$Contraste <- c(
+  "financiando_vs_inquilino", "quitado_vs_inquilino"
+)[income_tenure_detailed_results$Eq_Index]
+
+# Keep only the household_income rows -- drop intercepts for a clean view
+income_tenure_detailed_results <- income_tenure_detailed_results[
+  income_tenure_detailed_results$Variable == "household_income",
+  c("regiao", "Contraste", "estimate", "std_error", "p_value", "exp_b")
+]
+
+print(income_tenure_detailed_results)
+```
+
 ## Mercado de trabalho
 
 ```{r}
