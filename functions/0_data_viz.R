@@ -567,7 +567,12 @@ generate_comparison_plot <- function(comparison) {
     
     # Limites do eixo Y
     coord_cartesian(ylim = c(0.36, 0.50)) +
-    scale_y_continuous(breaks = seq(0.36, 0.50, by = 0.02)) +
+    scale_y_continuous(
+      breaks = seq(0.36, 0.50, by = 0.02),
+      labels = scales::label_number(decimal.mark = ",")
+      ) +
+    
+    scale_x_discrete(labels = stringr::str_to_title) +
     
     # Textos e tema
     labs(x = NULL, y = "Macro-F1") +

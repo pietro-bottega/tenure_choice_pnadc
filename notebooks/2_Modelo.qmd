@@ -142,6 +142,15 @@ print(full_fold_comparison)
 ```
 
 ```{r}
+full_fold_comparison %>%
+  group_by(macroregion) %>%
+  summarise(
+    media = mean(f1_improvement),
+    desvio_padrao = sd(f1_improvement)
+  )
+```
+
+```{r}
 regional_win_summary <- full_fold_comparison %>%
   group_by(macroregion) %>%
   summarize(
