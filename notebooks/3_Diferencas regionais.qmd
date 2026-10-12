@@ -94,8 +94,9 @@ tabela_mcmv_regiao <- design_tidy %>%
     faixa_mcmv_texto = case_when(
       household_income <= 2850 ~ "Faixa 1",
       household_income > 2850 & household_income <= 4700 ~ "Faixa 2",
-      household_income > 4700 & household_income <= 8600 ~ "Faixa 3",
-      household_income > 8600 ~ "Acima da Faixa 3",
+      household_income > 4700 & household_income <= 8000 ~ "Faixa 3",
+      
+      household_income > 8000 ~ "Acima da Faixa 3",
       TRUE ~ "Ignorado"
     ),
     faixa_mcmv = factor(faixa_mcmv_texto, levels = c(
@@ -137,9 +138,12 @@ grafico_mcmv <- ggplot(tabela_mcmv_regiao, aes(x = macroregion, y = percentual_n
       "Ignorado" = "#E0E0E0"
     )
   ) +
+  
+  scale_x_discrete(labels = stringr::str_to_title) +
+  
   labs(
     x = NULL,
-    y = "População projetada (%)",
+    y = "Distribuição dos domicílios próprios em financiamento (%)",
     fill = "Faixas de renda (PMCMV)"
   ) +
   theme_minimal() +
@@ -148,7 +152,7 @@ grafico_mcmv <- ggplot(tabela_mcmv_regiao, aes(x = macroregion, y = percentual_n
     legend.position = "right",
 
     legend.text = element_text(size = 11),
-    axis.title = element_text(size = 13),
+    axis.title = element_text(size = 11),
     axis.text = element_text(size = 11),
     panel.grid.major.x = element_blank(),
     panel.grid.minor = element_blank()
@@ -180,203 +184,39 @@ pnadc_financing_sudeste <- subset(pnadc_financing, macroregion == 'sudeste')
 generate_summary('household_income', pnadc_financing_sudeste)
 ```
 
-```{r}
-compute_cv_by_bracket <- function(design_obj, threshold = 8600, region_label = "") {
-  
-  below <- subset(design_obj, household_income <= threshold)
-  above <- subset(design_obj, household_income > threshold)
-  
-  summarize_segment <- function(seg_design, segment_label) {
-    mean_val <- svymean(~household_income, seg_design, na.rm = TRUE)
-    var_val  <- svyvar(~household_income, seg_design, na.rm = TRUE)
-    
-    # Index by position (1st/only element) instead of by name --
-    # svyvar()'s coef() doesn't reliably carry the "household_income"
-    # label the way svymean()'s does, especially for svyrep.design.
-    mu  <- as.numeric(coef(mean_val))[1]
-    sd_ <- sqrt(as.numeric(coef(var_val))[1])
-    cv  <- sd_ / mu
-    
-    n_obs <- nrow(seg_design$variables)
-    
-    data.frame(
-      Regiao  = region_label,
-      Faixa   = segment_label,
-      N       = n_obs,
-      Media   = mu,
-      DP      = sd_,
-      CV      = cv
-    )
-  }
-  
-  rbind(
-    summarize_segment(below, paste0("<= R$", format(threshold, big.mark = ".", scientific = FALSE))),
-    summarize_segment(above, paste0("> R$", format(threshold, big.mark = ".", scientific = FALSE)))
-  )
-}
-
-cv_sul     <- compute_cv_by_bracket(pnadc_financing_sul, threshold = 8600, region_label = "Sul")
-cv_sudeste <- compute_cv_by_bracket(pnadc_financing_sudeste, threshold = 8600, region_label = "Sudeste")
-
-cv_comparison <- rbind(cv_sul, cv_sudeste)
-print(cv_comparison)
-```
-
 ### Testes
 
 ```{r}
-# ------------------------------------------------------------------
-# 0. Helper functions
-# ------------------------------------------------------------------
-
-# Survey-weighted Pearson correlation. Works for continuous-continuous
-# or continuous-binary (point-biserial) pairs, since a 0/1 dummy is
-# just a numeric variable for this purpose.
-svy_cor <- function(design_obj, var1, var2) {
-  form <- as.formula(paste0("~", var1, " + ", var2))
-  cov_mat <- as.matrix(survey::svyvar(form, design_obj, na.rm = TRUE))
-  cov_mat[var1, var2] / sqrt(cov_mat[var1, var1] * cov_mat[var2, var2])
+rescale_income_to_log <- function(design_obj,
+                                  vars = c("household_income", "household_income_pcapita"),
+                                  use_log1p = FALSE,
+                                  suffix = NULL) {
+  
+  # Check that the variables exist in the design
+  missing_vars <- setdiff(vars, names(design_obj$variables))
+  if (length(missing_vars) > 0) {
+    stop("Variables not found in design: ", paste(missing_vars, collapse = ", "))
+  }
+  
+  # Overwrite by default; if suffix is given, create new columns (e.g., "household_income_log")
+  new_names <- if (is.null(suffix)) vars else paste0(vars, suffix)
+  log_fun   <- if (use_log1p) "log1p" else "log"
+  
+  # Build the expressions programmatically: new_name = log(var)
+  exprs <- setNames(
+    lapply(vars, function(v) call(log_fun, as.name(v))),
+    new_names
+  )
+  
+  updated_design <- do.call(update, c(list(design_obj), exprs))
+  
+  return(updated_design)
 }
-
-# Survey-weighted bivariate regression -- gives a proper design-based
-# estimate, SE and p-value alongside the raw correlation coefficient.
-# family = gaussian() for a continuous outcome (e.g. income as DV);
-# family = quasibinomial() for a binary outcome (e.g. ownership as DV).
-svy_bivariate_test <- function(design_obj, outcome, predictor, family = gaussian()) {
-  form <- as.formula(paste0(outcome, " ~ ", predictor))
-  fit <- survey::svyglm(form, design = design_obj, family = family)
-  s <- summary(fit)
-  row <- s$coefficients[predictor, , drop = FALSE]
-  data.frame(
-    outcome   = outcome,
-    predictor = predictor,
-    estimate  = row[1, "Estimate"],
-    std_error = row[1, "Std. Error"],
-    p_value   = row[1, ncol(row)]
-  )
-}
-
-# ------------------------------------------------------------------
-# 1. Build the binary indicators once, on the full design
-#    -- adjust variable/level names here if yours differ
-# ------------------------------------------------------------------
-pnadc <- update(
-  pnadc,
-  is_formal_owner           = as.numeric(tenure_condition == "proprietario_formal"),
-  status_empregador         = as.numeric(worker_status == "empregador"),
-  status_informal           = as.numeric(worker_status == "informal"),
-  status_nao_ocupado        = as.numeric(worker_status == "nao_ocupado"),
-  status_servidor_publico   = as.numeric(worker_status == "servidor_publico"),
-  status_trabalhador_formal = as.numeric(worker_status == "trabalhador_formal")
-)
-
-worker_dummies <- c(
-  "status_empregador", "status_informal", "status_nao_ocupado",
-  "status_servidor_publico", "status_trabalhador_formal"
-)
-
-regions <- c("norte", "nordeste", "sudeste", "sul", "centro-oeste")
-
-# ------------------------------------------------------------------
-# 2. Renda x Propriedade formal, por região
-# ------------------------------------------------------------------
-income_ownership_results <- do.call(rbind, lapply(regions, function(r) {
-  reg_design <- subset(pnadc, macroregion == r)
-  
-  cor_val <- svy_cor(reg_design, "household_income", "is_formal_owner")
-  test_val <- svy_bivariate_test(
-    reg_design,
-    outcome   = "is_formal_owner",
-    predictor = "household_income",
-    family    = quasibinomial()   # binary outcome -> logistic
-  )
-  
-  data.frame(
-    regiao                        = r,
-    correlacao_renda_propriedade  = cor_val,
-    logit_estimate                = test_val$estimate,
-    logit_p_value                 = test_val$p_value
-  )
-}))
-
-print(income_ownership_results)
-
-# ------------------------------------------------------------------
-# 3. Renda x cada dummy de status de trabalho, por região
-# ------------------------------------------------------------------
-income_worker_status_results <- do.call(rbind, lapply(regions, function(r) {
-  reg_design <- subset(pnadc, macroregion == r)
-  
-  do.call(rbind, lapply(worker_dummies, function(dummy_var) {
-    cor_val <- svy_cor(reg_design, "household_income", dummy_var)
-    test_val <- svy_bivariate_test(
-      reg_design,
-      outcome   = "household_income",
-      predictor = dummy_var,
-      family    = gaussian()      # continuous outcome -> linear
-    )
-    data.frame(
-      regiao     = r,
-      status     = dummy_var,
-      correlacao = cor_val,
-      estimate   = test_val$estimate,
-      p_value    = test_val$p_value
-    )
-  }))
-}))
-
-print(income_worker_status_results)
 ```
 
 ```{r}
-wealth_ownership_results <- do.call(rbind, lapply(regions, function(r) {
-  reg_design <- subset(pnadc, macroregion == r)
-  
-  cor_val <- svy_cor(reg_design, "wealth_index", "is_formal_owner")
-  test_val <- svy_bivariate_test(
-    reg_design,
-    outcome   = "is_formal_owner",
-    predictor = "wealth_index",
-    family    = quasibinomial()   # binary outcome -> logistic
-  )
-  
-  data.frame(
-    regiao                        = r,
-    correlacao_riqueza_propriedade  = cor_val,
-    logit_estimate                = test_val$estimate,
-    logit_p_value                 = test_val$p_value
-  )
-}))
-
-print(wealth_ownership_results)
-```
-
-```{r}
-worker_status_ownership_results <- do.call(rbind, lapply(regions, function(r) {
-  reg_design <- subset(pnadc, macroregion == r)
-  
-  do.call(rbind, lapply(worker_dummies, function(dummy_var) {
-    
-    cor_val <- svy_cor(reg_design, dummy_var, "is_formal_owner")
-    
-    test_val <- svy_bivariate_test(
-      reg_design,
-      outcome   = "is_formal_owner",
-      predictor = dummy_var,
-      family    = quasibinomial()   # outcome binário -> logística
-    )
-    
-    data.frame(
-      regiao      = r,
-      status      = dummy_var,
-      correlacao  = cor_val,
-      logit_estimate = test_val$estimate,
-      logit_p_value  = test_val$p_value
-    )
-  }))
-}))
-
-print(worker_status_ownership_results)
+# Use log(1 + x) to handle zero incomes
+pnadc_outcome <- rescale_income_to_log(pnadc, use_log1p = TRUE, suffix = "_log")
 ```
 
 ```{r}
@@ -386,8 +226,8 @@ print(worker_status_ownership_results)
 #    Morador_informal is dropped -- not relevant to this specific contrast.
 #    Adjust `house_payment_status` and its level labels to match your data.
 # ------------------------------------------------------------------
-pnadc <- update(
-  pnadc,
+pnadc_outcome <- update(
+  pnadc_outcome,
   tenure_detailed = dplyr::case_when(
     tenure_condition == "inquilino_formal" ~ "inquilino_formal",
     tenure_condition == "proprietario_formal" & S01017 == 2 ~ "proprietario_financiando",
@@ -397,7 +237,7 @@ pnadc <- update(
 )
 
 # Drop rows outside the three states of interest (morador_informal, NAs)
-pnadc_three_state <- subset(pnadc, !is.na(tenure_detailed))
+pnadc_three_state <- subset(pnadc_outcome, !is.na(tenure_detailed))
 
 # Set inquilino_formal as refLevel = 1 via explicit factor level order
 pnadc_three_state <- update(
@@ -418,7 +258,7 @@ fit_income_tenure_detailed <- function(design_obj, region_label) {
   reg_design <- subset(design_obj, macroregion == region_label)
   
   fit <- svyVGAM::svy_vglm(
-    formula = tenure_detailed ~ household_income,
+    formula = tenure_detailed ~ household_income_log,
     design  = reg_design,
     family  = VGAM::multinomial(refLevel = 1)
   )
@@ -472,7 +312,7 @@ income_tenure_detailed_results$Contraste <- c(
 
 # Keep only the household_income rows -- drop intercepts for a clean view
 income_tenure_detailed_results <- income_tenure_detailed_results[
-  income_tenure_detailed_results$Variable == "household_income",
+  income_tenure_detailed_results$Variable == "household_income_log",
   c("regiao", "Contraste", "estimate", "std_error", "p_value", "exp_b")
 ]
 
@@ -492,7 +332,35 @@ tbl_worker_br <- svytable(~worker_status, pnadc, Ntotal = 100)
 tbl_worker_br
 ```
 
-## Tabelas regionais
+```{r}
+worker_status_ownership_results <- do.call(rbind, lapply(regions, function(r) {
+  reg_design <- subset(pnadc, macroregion == r)
+  
+  do.call(rbind, lapply(worker_dummies, function(dummy_var) {
+    
+    cor_val <- svy_cor(reg_design, dummy_var, "is_formal_owner")
+    
+    test_val <- svy_bivariate_test(
+      reg_design,
+      outcome   = "is_formal_owner",
+      predictor = dummy_var,
+      family    = quasibinomial()   # outcome binário -> logística
+    )
+    
+    data.frame(
+      regiao      = r,
+      status      = dummy_var,
+      correlacao  = cor_val,
+      logit_estimate = test_val$estimate,
+      logit_p_value  = test_val$p_value
+    )
+  }))
+}))
+
+print(worker_status_ownership_results)
+```
+
+# Tabelas regionais
 
 ```{r}
 ## =================================================================
@@ -719,4 +587,110 @@ write.csv(create_coef_table(post_lasso_centroeste), "../outputs/coef_centroeste.
 write.csv(create_coef_table(post_lasso_sul), "../outputs/coef_sul.csv")
 write.csv(create_coef_table(post_lasso_sudeste), "../outputs/coef_sudeste.csv")
 write.csv(create_coef_table(post_lasso_norte), "../outputs/coef_norte.csv")
+```
+
+# Outros
+
+```{r}
+# ------------------------------------------------------------------
+# 0. Helper functions
+# ------------------------------------------------------------------
+
+# Survey-weighted Pearson correlation. Works for continuous-continuous
+# or continuous-binary (point-biserial) pairs, since a 0/1 dummy is
+# just a numeric variable for this purpose.
+svy_cor <- function(design_obj, var1, var2) {
+  form <- as.formula(paste0("~", var1, " + ", var2))
+  cov_mat <- as.matrix(survey::svyvar(form, design_obj, na.rm = TRUE))
+  cov_mat[var1, var2] / sqrt(cov_mat[var1, var1] * cov_mat[var2, var2])
+}
+
+# Survey-weighted bivariate regression -- gives a proper design-based
+# estimate, SE and p-value alongside the raw correlation coefficient.
+# family = gaussian() for a continuous outcome (e.g. income as DV);
+# family = quasibinomial() for a binary outcome (e.g. ownership as DV).
+svy_bivariate_test <- function(design_obj, outcome, predictor, family = gaussian()) {
+  form <- as.formula(paste0(outcome, " ~ ", predictor))
+  fit <- survey::svyglm(form, design = design_obj, family = family)
+  s <- summary(fit)
+  row <- s$coefficients[predictor, , drop = FALSE]
+  data.frame(
+    outcome   = outcome,
+    predictor = predictor,
+    estimate  = row[1, "Estimate"],
+    std_error = row[1, "Std. Error"],
+    p_value   = row[1, ncol(row)]
+  )
+}
+
+# ------------------------------------------------------------------
+# 1. Build the binary indicators once, on the full design
+#    -- adjust variable/level names here if yours differ
+# ------------------------------------------------------------------
+pnadc <- update(
+  pnadc,
+  is_formal_owner           = as.numeric(tenure_condition == "proprietario_formal"),
+  status_empregador         = as.numeric(worker_status == "empregador"),
+  status_informal           = as.numeric(worker_status == "informal"),
+  status_nao_ocupado        = as.numeric(worker_status == "nao_ocupado"),
+  status_servidor_publico   = as.numeric(worker_status == "servidor_publico"),
+  status_trabalhador_formal = as.numeric(worker_status == "trabalhador_formal")
+)
+
+worker_dummies <- c(
+  "status_empregador", "status_informal", "status_nao_ocupado",
+  "status_servidor_publico", "status_trabalhador_formal"
+)
+
+regions <- c("norte", "nordeste", "sudeste", "sul", "centro-oeste")
+
+# ------------------------------------------------------------------
+# 2. Renda x Propriedade formal, por região
+# ------------------------------------------------------------------
+income_ownership_results <- do.call(rbind, lapply(regions, function(r) {
+  reg_design <- subset(pnadc, macroregion == r)
+  
+  cor_val <- svy_cor(reg_design, "household_income", "is_formal_owner")
+  test_val <- svy_bivariate_test(
+    reg_design,
+    outcome   = "is_formal_owner",
+    predictor = "household_income",
+    family    = quasibinomial()   # binary outcome -> logistic
+  )
+  
+  data.frame(
+    regiao                        = r,
+    correlacao_renda_propriedade  = cor_val,
+    logit_estimate                = test_val$estimate,
+    logit_p_value                 = test_val$p_value
+  )
+}))
+
+print(income_ownership_results)
+
+# ------------------------------------------------------------------
+# 3. Renda x cada dummy de status de trabalho, por região
+# ------------------------------------------------------------------
+income_worker_status_results <- do.call(rbind, lapply(regions, function(r) {
+  reg_design <- subset(pnadc, macroregion == r)
+  
+  do.call(rbind, lapply(worker_dummies, function(dummy_var) {
+    cor_val <- svy_cor(reg_design, "household_income", dummy_var)
+    test_val <- svy_bivariate_test(
+      reg_design,
+      outcome   = "household_income",
+      predictor = dummy_var,
+      family    = gaussian()      # continuous outcome -> linear
+    )
+    data.frame(
+      regiao     = r,
+      status     = dummy_var,
+      correlacao = cor_val,
+      estimate   = test_val$estimate,
+      p_value    = test_val$p_value
+    )
+  }))
+}))
+
+print(income_worker_status_results)
 ```
